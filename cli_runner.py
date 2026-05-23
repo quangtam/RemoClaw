@@ -43,7 +43,7 @@ _PROMPT_RE = re.compile(r"\d*%?\s*!>\s*$")
 _ANSI_RE = re.compile(r"\x1b\[[\x20-\x3f]*[\x40-\x7e]|\x1b[\x20-\x2f]*[\x30-\x7e]|\x9b[\x20-\x3f]*[\x40-\x7e]")
 
 # How long to wait for the initial prompt after spawning
-_INIT_TIMEOUT = 60
+_INIT_TIMEOUT = 120
 
 
 @dataclass

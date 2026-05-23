@@ -2157,6 +2157,27 @@ def main() -> None:
 
     # Background: idle session cleanup (runs every N seconds)
     async def _post_init(app_):
+        # Auto-register bot commands with Telegram
+        from telegram import BotCommand
+        await app_.bot.set_my_commands([
+            BotCommand("start", "Welcome message"),
+            BotCommand("help", "Command reference"),
+            BotCommand("new", "Start fresh session"),
+            BotCommand("cancel", "Kill running process"),
+            BotCommand("resume", "Resume previous session"),
+            BotCommand("info", "Current session details"),
+            BotCommand("sessions", "All active sessions"),
+            BotCommand("model", "Select AI model"),
+            BotCommand("project", "Bind thread to project"),
+            BotCommand("projects", "Browse previous projects"),
+            BotCommand("provider", "Switch CLI provider"),
+            BotCommand("voice", "Toggle voice output"),
+            BotCommand("git", "Git info"),
+            BotCommand("status", "CLI health check"),
+            BotCommand("skills", "List BMAD workflows"),
+        ])
+        logger.info("Bot commands registered with Telegram")
+
         async def _cleanup_loop():
             while True:
                 try:
