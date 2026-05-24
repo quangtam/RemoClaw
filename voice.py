@@ -1,4 +1,4 @@
-"""Voice features for Chati v2.0 (Growth phase).
+"""Voice features for RemoClaw v2.0 (Growth phase).
 
 Handles:
 - Voice message transcription — OpenAI Whisper (cloud) or faster-whisper (local)

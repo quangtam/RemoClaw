@@ -10,7 +10,7 @@ project_knowledge: "{project-root}/docs"
 
 # Core Configuration Values
 user_name: Tony
-project_name: Chati
+project_name: RemoClaw
 communication_language: Vietnamese
 document_output_language: English
 output_folder: "{project-root}/docs"

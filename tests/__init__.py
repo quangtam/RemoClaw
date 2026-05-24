@@ -1,1 +1,1 @@
-# Tests package for Chati v2.0
+# Tests package for RemoClaw v2.0

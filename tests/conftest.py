@@ -1,4 +1,4 @@
-"""Shared test fixtures for Chati v2.0 TDD workflow.
+"""Shared test fixtures for RemoClaw v2.0 TDD workflow.
 
 Provides fixtures:
 - in_memory_db: Migrated SQLite :memory: for DB tests

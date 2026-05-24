@@ -3,8 +3,8 @@
 Covers:
 - VoiceSynthesizer (voice.py)
 - is_code_heavy() (message_utils.py)
-- TTS integration in response handlers (chati.py)
-- /voice toggle command (chati.py)
+- TTS integration in response handlers (remoclaw.py)
+- /voice toggle command (remoclaw.py)
 """
 
 import asyncio
@@ -153,7 +153,7 @@ class TestVoiceSynthesizer:
         assert await synth.synthesize("   ") is None
 
 
-# ─── TTS integration in chati.py ────────────────────────────────────────────
+# ─── TTS integration in remoclaw.py ────────────────────────────────────────────
 
 
 def _make_context(*, bot_data=None):

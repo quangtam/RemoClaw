@@ -1,4 +1,4 @@
-"""Session manager for Chati v2.0.
+"""Session manager for RemoClaw v2.0.
 
 Owns PTY session pool, lifecycle, and explicit state machine transitions.
 Does NOT handle I/O streaming — that stays in cli_runner.py.
@@ -34,7 +34,7 @@ class DecisionPrompt:
     """Represents a detected CLI interactive prompt requiring user input.
 
     Yielded from the streaming generator when the CLI is waiting for
-    a response (e.g., "Continue? [y/N]"). Consumer (chati.py) forwards
+    a response (e.g., "Continue? [y/N]"). Consumer (remoclaw.py) forwards
     this to the user via Telegram, then calls pipe_reply_stream() to
     resume execution once user replies.
     """

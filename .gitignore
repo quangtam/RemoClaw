@@ -8,14 +8,12 @@ bot.log
 .chati.pid
 .bot.pid
 .venv/
+.DS_Store
 
 # Runtime artifacts
 remoclaw.db
 remoclaw.db-shm
 remoclaw.db-wal
-chati.db
-chati.db-shm
-chati.db-wal
 *.db
 *.db-shm
 *.db-wal

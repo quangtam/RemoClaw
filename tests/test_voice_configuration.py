@@ -580,7 +580,7 @@ class TestGracefulDegradation:
 
         # Simulate ImportError on 'from voice import ...'
         with patch.dict("sys.modules", {"voice": None}):
-            # The module-level initialization in chati.py already ran at import time.
+            # The module-level initialization in remoclaw.py already ran at import time.
             # We test the pattern: if import fails, services are None.
             import remoclaw
 

@@ -1,4 +1,4 @@
-"""Chati CLI runner — persistent interactive sessions via PTY.
+"""RemoClaw CLI runner — persistent interactive sessions via PTY.
 
 Keeps a long-running CLI process per thread using pseudo-terminals.
 Messages are written to the PTY; responses are read until the next

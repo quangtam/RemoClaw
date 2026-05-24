@@ -11,7 +11,7 @@
 # ─────────────────────────────────────────────────────────────────
 
 [core]
-project_name = "Chati"
+project_name = "RemoClaw"
 document_output_language = "English"
 output_folder = "{project-root}/docs"
 

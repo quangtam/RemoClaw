@@ -86,7 +86,7 @@ class TestVoiceTranscriber:
         assert result is None
 
 
-# ─── handle_voice_message (chati.py) tests ──────────────────────────────────
+# ─── handle_voice_message (remoclaw.py) tests ──────────────────────────────────
 
 
 def _make_voice_update(tg_factory, *, thread_id=None):
@@ -109,7 +109,7 @@ def _make_context(*, bot=None):
 
 
 class TestHandleVoiceMessage:
-    """Integration tests for the voice message handler in chati.py."""
+    """Integration tests for the voice message handler in remoclaw.py."""
 
     async def test_voice_disabled_sends_fallback_message(self, telegram_update_factory):
         """When voice_enabled=False, handler sends the 'not configured' message."""
@@ -276,7 +276,7 @@ class TestHandleVoiceMessage:
         assert not os.path.exists(captured_path["path"])
 
 
-# ─── handle_voice_callback (chati.py) tests ─────────────────────────────────
+# ─── handle_voice_callback (remoclaw.py) tests ─────────────────────────────────
 
 
 class TestHandleVoiceCallback:
