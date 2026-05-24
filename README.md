@@ -25,7 +25,17 @@ Remote control any AI coding agent from your phone. No laptop needed.
 
 RemoClaw bridges your favorite messaging app to AI coding CLIs (Kiro, Claude Code, Gemini, Codex) — send a message, get code back. Voice in, voice out. Code from anywhere.
 
+## How It Works
+
+<p align="center">
+  <img src="assets/how-it-works.svg" alt="How RemoClaw Works — system diagram" width="800" />
+</p>
+
 ## Features
+
+<p align="center">
+  <img src="assets/features.svg" alt="RemoClaw Features" width="800" />
+</p>
 
 ### Core
 

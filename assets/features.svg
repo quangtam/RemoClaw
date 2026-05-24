@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 340" width="900" height="340">
+  <defs>
+    <linearGradient id="fbg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d1117"/>
+      <stop offset="100%" style="stop-color:#161b22"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="340" rx="16" fill="url(#fbg)"/>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="#e6edf3">Key Features</text>
+
+  <!-- ═══ Feature Cards ═══ -->
+
+  <!-- Card 1: Streaming -->
+  <rect x="30" y="55" width="170" height="120" rx="10" fill="#161b22" stroke="#238636" stroke-width="1.5"/>
+  <text x="115" y="82" text-anchor="middle" font-size="24">⚡</text>
+  <text x="115" y="104" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#e6edf3">Real-time Streaming</text>
+  <text x="115" y="122" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Progressive message edits</text>
+  <text x="115" y="136" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">ChatGPT-like experience</text>
+  <text x="115" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Typing indicators</text>
+  <text x="115" y="164" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#238636">● Live preview</text>
+
+  <!-- Card 2: Multi-Agent -->
+  <rect x="215" y="55" width="170" height="120" rx="10" fill="#161b22" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="300" y="82" text-anchor="middle" font-size="24">🔌</text>
+  <text x="300" y="104" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#e6edf3">Multi-Agent</text>
+  <text x="300" y="122" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Kiro, Claude, Gemini, Codex</text>
+  <text x="300" y="136" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Switch per-thread</text>
+  <text x="300" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Auto-discovered drivers</text>
+  <text x="300" y="164" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#7c3aed">● Pluggable</text>
+
+  <!-- Card 3: Voice -->
+  <rect x="400" y="55" width="170" height="120" rx="10" fill="#161b22" stroke="#f78166" stroke-width="1.5"/>
+  <text x="485" y="82" text-anchor="middle" font-size="24">🎤</text>
+  <text x="485" y="104" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#e6edf3">Voice I/O</text>
+  <text x="485" y="122" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Whisper transcription</text>
+  <text x="485" y="136" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">TTS response readback</text>
+  <text x="485" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Free local backends</text>
+  <text x="485" y="164" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#f78166">● Zero config</text>
+
+  <!-- Card 4: Decision Forwarding -->
+  <rect x="585" y="55" width="170" height="120" rx="10" fill="#161b22" stroke="#d29922" stroke-width="1.5"/>
+  <text x="670" y="82" text-anchor="middle" font-size="24">⚠️</text>
+  <text x="670" y="104" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#e6edf3">Decision Forwarding</text>
+  <text x="670" y="122" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">CLI asks Y/n → you reply</text>
+  <text x="670" y="136" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">File selection prompts</text>
+  <text x="670" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Auto-timeout protection</text>
+  <text x="670" y="164" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#d29922">● Interactive</text>
+
+  <!-- Card 5: Screenshots -->
+  <rect x="770" y="55" width="105" height="120" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="822" y="82" text-anchor="middle" font-size="24">📸</text>
+  <text x="822" y="104" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="700" fill="#e6edf3">Screenshots</text>
+  <text x="822" y="122" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#8b949e">Auto-detect</text>
+  <text x="822" y="136" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#8b949e">Auto-send</text>
+  <text x="822" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="8" fill="#8b949e">as photos</text>
+
+  <!-- ═══ Bottom Row ═══ -->
+
+  <!-- Card 6: Persistence -->
+  <rect x="30" y="195" width="200" height="120" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="130" y="222" text-anchor="middle" font-size="24">💾</text>
+  <text x="130" y="244" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#e6edf3">SQLite Persistence</text>
+  <text x="130" y="262" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Survives restarts</text>
+  <text x="130" y="276" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Multi-project binding</text>
+  <text x="130" y="290" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">3-layer config resolution</text>
+  <text x="130" y="304" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#3fb950">SQLite → .env → defaults</text>
+
+  <!-- Card 7: Session Pool -->
+  <rect x="250" y="195" width="200" height="120" rx="10" fill="#161b22" stroke="#a371f7" stroke-width="1.5"/>
+  <text x="350" y="222" text-anchor="middle" font-size="24">🧵</text>
+  <text x="350" y="244" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#e6edf3">Concurrent Sessions</text>
+  <text x="350" y="262" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Thread = Session</text>
+  <text x="350" y="276" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Parallel execution</text>
+  <text x="350" y="290" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">Idle auto-cleanup</text>
+  <text x="350" y="304" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#a371f7">● Adaptive timeout</text>
+
+  <!-- Card 8: Per-thread Config -->
+  <rect x="470" y="195" width="200" height="120" rx="10" fill="#161b22" stroke="#79c0ff" stroke-width="1.5"/>
+  <text x="570" y="222" text-anchor="middle" font-size="24">⚙️</text>
+  <text x="570" y="244" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#e6edf3">Per-Thread Config</text>
+  <text x="570" y="262" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">/project — bind directory</text>
+  <text x="570" y="276" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">/provider — switch CLI</text>
+  <text x="570" y="290" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">/model — select AI model</text>
+  <text x="570" y="304" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#79c0ff">/voice speed — TTS speed</text>
+
+  <!-- Card 9: Git -->
+  <rect x="690" y="195" width="185" height="120" rx="10" fill="#161b22" stroke="#f0883e" stroke-width="1.5"/>
+  <text x="782" y="222" text-anchor="middle" font-size="24">🔀</text>
+  <text x="782" y="244" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#e6edf3">Git &amp; Dev Tools</text>
+  <text x="782" y="262" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">/git log, status, diff</text>
+  <text x="782" y="276" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">/skills — BMAD workflows</text>
+  <text x="782" y="290" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#8b949e">MD→HTML formatting</text>
+  <text x="782" y="304" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#f0883e">● No laptop needed</text>
+</svg>

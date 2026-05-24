@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" width="900" height="420">
+  <defs>
+    <linearGradient id="bg1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d1117"/>
+      <stop offset="100%" style="stop-color:#161b22"/>
+    </linearGradient>
+    <linearGradient id="phone-g" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#58a6ff"/>
+      <stop offset="100%" style="stop-color:#1f6feb"/>
+    </linearGradient>
+    <linearGradient id="remo-g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff6b35"/>
+      <stop offset="100%" style="stop-color:#e63946"/>
+    </linearGradient>
+    <linearGradient id="agent-g" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c3aed"/>
+      <stop offset="100%" style="stop-color:#5b21b6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="420" rx="16" fill="url(#bg1)"/>
+
+  <!-- Title -->
+  <text x="450" y="38" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" font-weight="700" fill="#e6edf3">How RemoClaw Works</text>
+
+  <!-- ═══ LEFT: Your Phone ═══ -->
+  <rect x="40" y="70" width="160" height="290" rx="20" fill="none" stroke="url(#phone-g)" stroke-width="2.5"/>
+  <rect x="52" y="95" width="136" height="230" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <circle cx="120" cy="345" r="8" fill="none" stroke="#58a6ff" stroke-width="1.5"/>
+  <!-- Phone screen content -->
+  <text x="70" y="118" font-family="monospace" font-size="9" fill="#7ee787">You:</text>
+  <text x="70" y="132" font-family="monospace" font-size="8" fill="#8b949e">fix the login bug</text>
+  <rect x="62" y="142" width="116" height="1" fill="#30363d"/>
+  <text x="70" y="158" font-family="monospace" font-size="9" fill="#ff7b72">🦞:</text>
+  <text x="70" y="172" font-family="monospace" font-size="7.5" fill="#8b949e">Found the issue in</text>
+  <text x="70" y="184" font-family="monospace" font-size="7.5" fill="#8b949e">auth.py line 42...</text>
+  <text x="70" y="196" font-family="monospace" font-size="7.5" fill="#7ee787">✅ Fixed + tests pass</text>
+  <rect x="62" y="208" width="116" height="1" fill="#30363d"/>
+  <text x="70" y="224" font-family="monospace" font-size="8" fill="#58a6ff">🎤 Voice message</text>
+  <text x="70" y="238" font-family="monospace" font-size="8" fill="#58a6ff">📸 Screenshots</text>
+  <text x="70" y="252" font-family="monospace" font-size="8" fill="#58a6ff">⚠️ Decision prompts</text>
+  <!-- Phone label -->
+  <text x="120" y="385" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#58a6ff">Your Phone</text>
+  <text x="120" y="402" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#8b949e">Telegram</text>
+
+  <!-- ═══ Arrow 1: Phone → RemoClaw ═══ -->
+  <line x1="210" y1="210" x2="290" y2="210" stroke="#58a6ff" stroke-width="2" stroke-dasharray="6,3"/>
+  <polygon points="290,205 300,210 290,215" fill="#58a6ff"/>
+  <text x="250" y="198" text-anchor="middle" font-family="monospace" font-size="8" fill="#8b949e">text/voice</text>
+  <text x="250" y="228" text-anchor="middle" font-family="monospace" font-size="8" fill="#8b949e">← stream</text>
+
+  <!-- ═══ CENTER: RemoClaw ═══ -->
+  <rect x="300" y="80" width="280" height="270" rx="14" fill="#161b22" stroke="url(#remo-g)" stroke-width="2.5"/>
+  <!-- RemoClaw header -->
+  <rect x="300" y="80" width="280" height="40" rx="14" fill="url(#remo-g)" opacity="0.15"/>
+  <text x="440" y="106" text-anchor="middle" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#ff6b35">🦞 RemoClaw</text>
+
+  <!-- Internal components -->
+  <rect x="320" y="135" width="110" height="30" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="375" y="155" text-anchor="middle" font-family="monospace" font-size="9" fill="#e6edf3">Session Pool</text>
+
+  <rect x="450" y="135" width="110" height="30" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="505" y="155" text-anchor="middle" font-family="monospace" font-size="9" fill="#e6edf3">Config (SQLite)</text>
+
+  <rect x="320" y="178" width="110" height="30" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="375" y="198" text-anchor="middle" font-family="monospace" font-size="9" fill="#e6edf3">Streaming</text>
+
+  <rect x="450" y="178" width="110" height="30" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="505" y="198" text-anchor="middle" font-family="monospace" font-size="9" fill="#e6edf3">Decision Fwd</text>
+
+  <rect x="320" y="221" width="110" height="30" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="375" y="241" text-anchor="middle" font-family="monospace" font-size="9" fill="#e6edf3">Voice I/O</text>
+
+  <rect x="450" y="221" width="110" height="30" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="505" y="241" text-anchor="middle" font-family="monospace" font-size="9" fill="#e6edf3">Screenshot</text>
+
+  <rect x="320" y="264" width="240" height="30" rx="6" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="440" y="284" text-anchor="middle" font-family="monospace" font-size="9" fill="#e6edf3">CLI Provider (pluggable drivers)</text>
+
+  <!-- Features list -->
+  <text x="320" y="320" font-family="monospace" font-size="8" fill="#7ee787">✓ Multi-project</text>
+  <text x="420" y="320" font-family="monospace" font-size="8" fill="#7ee787">✓ Per-thread config</text>
+  <text x="320" y="335" font-family="monospace" font-size="8" fill="#7ee787">✓ Auto-cleanup</text>
+  <text x="420" y="335" font-family="monospace" font-size="8" fill="#7ee787">✓ Code detection</text>
+
+  <!-- ═══ Arrow 2: RemoClaw → Agents ═══ -->
+  <line x1="590" y1="210" x2="640" y2="150" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6,3"/>
+  <line x1="590" y1="210" x2="640" y2="210" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6,3"/>
+  <line x1="590" y1="210" x2="640" y2="270" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6,3"/>
+  <line x1="590" y1="210" x2="640" y2="330" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6,3"/>
+  <polygon points="640,145 650,150 640,155" fill="#7c3aed"/>
+  <polygon points="640,205 650,210 640,215" fill="#7c3aed"/>
+  <polygon points="640,265 650,270 640,275" fill="#7c3aed"/>
+  <polygon points="640,325 650,330 640,335" fill="#7c3aed"/>
+  <text x="615" y="130" text-anchor="middle" font-family="monospace" font-size="8" fill="#8b949e">PTY</text>
+
+  <!-- ═══ RIGHT: AI Coding Agents ═══ -->
+  <rect x="650" y="130" width="200" height="40" rx="8" fill="url(#agent-g)" opacity="0.2" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="680" y="155" font-family="system-ui, sans-serif" font-size="12" fill="#c4b5fd">⚡</text>
+  <text x="700" y="155" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#e6edf3">Kiro CLI</text>
+
+  <rect x="650" y="190" width="200" height="40" rx="8" fill="url(#agent-g)" opacity="0.2" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="680" y="215" font-family="system-ui, sans-serif" font-size="12" fill="#c4b5fd">🟣</text>
+  <text x="700" y="215" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#e6edf3">Claude Code</text>
+
+  <rect x="650" y="250" width="200" height="40" rx="8" fill="url(#agent-g)" opacity="0.2" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="680" y="275" font-family="system-ui, sans-serif" font-size="12" fill="#c4b5fd">💎</text>
+  <text x="700" y="275" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#e6edf3">Gemini CLI</text>
+
+  <rect x="650" y="310" width="200" height="40" rx="8" fill="url(#agent-g)" opacity="0.2" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="680" y="335" font-family="system-ui, sans-serif" font-size="12" fill="#c4b5fd">🟢</text>
+  <text x="700" y="335" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#e6edf3">OpenAI Codex</text>
+
+  <!-- Agent label -->
+  <text x="750" y="385" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#7c3aed">AI Coding Agents</text>
+  <text x="750" y="402" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#8b949e">on your dev machine</text>
+
+  <!-- Server label -->
+  <rect x="620" y="390" width="260" height="22" rx="4" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+  <text x="750" y="405" text-anchor="middle" font-family="monospace" font-size="9" fill="#8b949e">🖥️ Your server / laptop (always-on)</text>
+</svg>
