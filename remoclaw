@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# Chati — management script
-# Usage: chati {start|stop|restart|status|log}
+# RemoClaw — management script
+# Usage: remoclaw {start|stop|restart|status|log}
 #
 
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PIDFILE="$DIR/.chati.pid"
-LOGFILE="$DIR/chati.log"
+PIDFILE="$DIR/.remoclaw.pid"
+LOGFILE="$DIR/remoclaw.log"
 PYTHON="$DIR/.venv/bin/python3"
-SCRIPT="$DIR/chati.py"
+SCRIPT="$DIR/remoclaw.py"
 
 # Detect python — prefer python3.14, fall back to python3
 if [[ -x "$DIR/.venv/bin/python3.14" ]]; then
@@ -29,20 +29,20 @@ is_running() {
 
 cmd_start() {
     if is_running; then
-        echo "⚡ Chati already running (PID $(cat "$PIDFILE"))"
+        echo "⚡ RemoClaw already running (PID $(cat "$PIDFILE"))"
         return 0
     fi
 
-    echo "🚀 Starting Chati..."
+    echo "🚀 Starting RemoClaw..."
     nohup "$PYTHON" "$SCRIPT" >> "$LOGFILE" 2>&1 &
     echo $! > "$PIDFILE"
     sleep 2
 
     if is_running; then
-        echo "✅ Chati started (PID $(cat "$PIDFILE"))"
+        echo "✅ RemoClaw started (PID $(cat "$PIDFILE"))"
         echo "   Log: tail -f $LOGFILE"
     else
-        echo "❌ Chati failed to start. Check log:"
+        echo "❌ RemoClaw failed to start. Check log:"
         tail -5 "$LOGFILE"
         rm -f "$PIDFILE"
         return 1
@@ -51,14 +51,14 @@ cmd_start() {
 
 cmd_stop() {
     if ! is_running; then
-        echo "ℹ️  Chati is not running"
+        echo "ℹ️  RemoClaw is not running"
         rm -f "$PIDFILE"
         return 0
     fi
 
     local pid
     pid=$(cat "$PIDFILE")
-    echo "🛑 Stopping Chati (PID $pid)..."
+    echo "🛑 Stopping RemoClaw (PID $pid)..."
     kill "$pid" 2>/dev/null
 
     for _ in {1..10}; do
@@ -72,7 +72,7 @@ cmd_stop() {
     fi
 
     rm -f "$PIDFILE"
-    echo "✅ Chati stopped"
+    echo "✅ RemoClaw stopped"
 }
 
 cmd_restart() {
@@ -85,10 +85,10 @@ cmd_status() {
     if is_running; then
         local pid
         pid=$(cat "$PIDFILE")
-        echo "✅ Chati is running (PID $pid)"
+        echo "✅ RemoClaw is running (PID $pid)"
         ps -p "$pid" -o pid,etime,rss,command 2>/dev/null | tail -1
     else
-        echo "⭕ Chati is not running"
+        echo "⭕ RemoClaw is not running"
         rm -f "$PIDFILE"
     fi
 }
@@ -110,7 +110,7 @@ case "${1:-help}" in
     status)  cmd_status  ;;
     log)     cmd_log     ;;
     *)
-        echo "Usage: chati {start|stop|restart|status|log}"
+        echo "Usage: remoclaw {start|stop|restart|status|log}"
         exit 1
         ;;
 esac

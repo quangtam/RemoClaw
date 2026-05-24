@@ -1,13 +1,13 @@
 @echo off
 setlocal
 
-:: ── Chati management script for Windows ─────────────────────────
-:: Usage: chati {start|stop|restart|status|log}
+:: ── RemoClaw management script for Windows ──────────────────────
+:: Usage: remoclaw {start|stop|restart|status|log}
 
 set DIR=%~dp0
-set PIDFILE=%DIR%.chati.pid
-set LOGFILE=%DIR%chati.log
-set SCRIPT=%DIR%chati.py
+set PIDFILE=%DIR%.remoclaw.pid
+set LOGFILE=%DIR%remoclaw.log
+set SCRIPT=%DIR%remoclaw.py
 
 :: Detect Python
 set PYTHON=
@@ -39,13 +39,13 @@ if exist "%PIDFILE%" (
     for /f %%P in (%PIDFILE%) do (
         tasklist /fi "PID eq %%P" 2>nul | find "%%P" >nul
         if !errorlevel! equ 0 (
-            echo [*] Chati already running (PID %%P)
+            echo [*] RemoClaw already running (PID %%P)
             exit /b 0
         )
     )
 )
 
-echo [*] Starting Chati...
+echo [*] Starting RemoClaw...
 start /b "" "%PYTHON%" "%SCRIPT%" >> "%LOGFILE%" 2>&1
 
 :: Get PID of the last started python process
@@ -55,10 +55,10 @@ for /f "tokens=2" %%P in ('tasklist /fi "imagename eq python.exe" /fo list 2^>nu
 )
 
 if exist "%PIDFILE%" (
-    for /f %%P in (%PIDFILE%) do echo [OK] Chati started (PID %%P)
+    for /f %%P in (%PIDFILE%) do echo [OK] RemoClaw started (PID %%P)
     echo      Log: type %LOGFILE%
 ) else (
-    echo [ERROR] Chati failed to start. Check log:
+    echo [ERROR] RemoClaw failed to start. Check log:
     if exist "%LOGFILE%" type "%LOGFILE%" | more
 )
 goto :eof
@@ -67,16 +67,16 @@ goto :eof
 
 :stop
 if not exist "%PIDFILE%" (
-    echo [*] Chati is not running
+    echo [*] RemoClaw is not running
     goto :eof
 )
 
 for /f %%P in (%PIDFILE%) do (
-    echo [*] Stopping Chati (PID %%P)...
+    echo [*] Stopping RemoClaw (PID %%P)...
     taskkill /pid %%P /f >nul 2>&1
 )
 del "%PIDFILE%" 2>nul
-echo [OK] Chati stopped
+echo [OK] RemoClaw stopped
 goto :eof
 
 :: ── Restart ─────────────────────────────────────────────────────
@@ -91,15 +91,15 @@ goto :eof
 
 :status
 if not exist "%PIDFILE%" (
-    echo [*] Chati is not running
+    echo [*] RemoClaw is not running
     goto :eof
 )
 for /f %%P in (%PIDFILE%) do (
     tasklist /fi "PID eq %%P" 2>nul | find "%%P" >nul
     if !errorlevel! equ 0 (
-        echo [OK] Chati is running (PID %%P)
+        echo [OK] RemoClaw is running (PID %%P)
     ) else (
-        echo [*] Chati is not running (stale PID file)
+        echo [*] RemoClaw is not running (stale PID file)
         del "%PIDFILE%" 2>nul
     )
 )
@@ -118,5 +118,5 @@ goto :eof
 :: ── Usage ───────────────────────────────────────────────────────
 
 :usage
-echo Usage: chati {start^|stop^|restart^|status^|log}
+echo Usage: remoclaw {start^|stop^|restart^|status^|log}
 exit /b 1
