@@ -1,48 +1,63 @@
-<table>
-<tr>
-<td valign="top" width="62%">
-
-<img src="assets/logo.svg" alt="RemoClaw Logo" width="120" />
-
 # 🦞 RemoClaw
 
-**Remote control any AI coding agent from your phone.**
+<p align="center">
+  <img src="assets/logo.svg" alt="RemoClaw Logo" width="200" />
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)
-![Telegram bot](https://img.shields.io/badge/Telegram-bot-26A5E4.svg)
-![Supported agents](https://img.shields.io/badge/agents-Kiro%20%C2%B7%20Claude%20%C2%B7%20Gemini%20%C2%B7%20Codex-7c3aed.svg)
+<p align="center">
+  <strong>Remote control any AI coding agent from your phone.</strong>
+</p>
 
-[Usage](docs/usage.md) · [Voice](docs/voice.md) · [Architecture](docs/architecture.md) · [Deployment](docs/deployment-guide.md) · [Contributing](docs/development-guide.md)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/Python-3.12+-blue.svg" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/Telegram-bot-26A5E4.svg" alt="Telegram bot">
+  <img src="https://img.shields.io/badge/agents-Kiro%20%C2%B7%20Claude%20%C2%B7%20Gemini%20%C2%B7%20Codex-7c3aed.svg" alt="Supported agents">
+</p>
 
-Your AI coding agents (Kiro, Claude Code, Gemini, Codex) live on your dev machine. **RemoClaw makes them controllable from your phone** — over Telegram, with streaming responses, voice in/out, and decision forwarding.
+<p align="center">
+  <a href="docs/usage.md">Usage</a> ·
+  <a href="docs/voice.md">Voice</a> ·
+  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/deployment-guide.md">Deployment</a> ·
+  <a href="docs/development-guide.md">Contributing</a>
+</p>
 
-### Quick start
+---
 
-```bash
-git clone https://github.com/quangtam/remoclaw.git
-cd remoclaw
-bash setup.sh        # Windows: setup.bat
-./remoclaw start     # Windows: remoclaw start
-```
+## What is RemoClaw?
 
-### Use it when
+Your AI coding agents (Kiro, Claude Code, Gemini, Codex) live on your dev machine. RemoClaw makes them controllable from your phone — over Telegram, with streaming responses, voice in/out, and decision forwarding.
+
+**Use it when:**
 
 - 🛋️ Reviewing a PR from the couch
 - 🚌 Triaging a bug on the bus
 - 🎤 Pair-programming hands-free while cooking
 - 🔀 Juggling multiple projects across separate threads
 
-</td>
-<td valign="top" width="38%">
+## How it works
 
-<img src="assets/RemoClaw.jpg" alt="RemoClaw screenshot" />
+<p align="center">
+  <img src="assets/how-it-works.svg" alt="System diagram" width="800" />
+</p>
 
-</td>
-</tr>
-</table>
+You send a message on Telegram → RemoClaw forwards it to the AI agent on your dev machine → the agent's response streams back to your phone in real-time. Voice messages, decision prompts (Y/n), and screenshots all flow through the same pipe.
 
----
+For technical details, see the [architecture doc](docs/architecture.md).
+
+<p align="center">
+  <img src="assets/RemoClaw.jpg" alt="RemoClaw on Telegram" width="360" />
+</p>
+
+## Quick start
+
+```bash
+git clone https://github.com/quangtam/remoclaw.git
+cd remoclaw
+bash setup.sh           # Windows: setup.bat
+./remoclaw start        # Windows: remoclaw start
+```
 
 The setup wizard handles Python venv, dependencies, Telegram token, and `.env`. After it finishes, login your CLI once (`kiro-cli login` / `claude login` / `gemini auth` / `codex login`) and start chatting.
 
@@ -57,17 +72,7 @@ The setup wizard handles Python venv, dependencies, Telegram token, and `.env`. 
 | [Gemini CLI](docs/setup-gemini.md) | `gemini auth` |
 | [OpenAI Codex](docs/setup-codex.md) | `codex login` |
 
-All agents authenticate via browser login on the host machine. RemoClaw uses the local session — **no API keys required** for the agent itself. Need more setup details? See the [deployment guide](docs/deployment-guide.md).
-
-## How it works
-
-<p align="center">
-  <img src="assets/how-it-works.svg" alt="System diagram" width="800" />
-</p>
-
-You send a message on Telegram → RemoClaw forwards it to the AI agent on your dev machine → the agent's response streams back to your phone in real-time. Voice messages, decision prompts (Y/n), and screenshots all flow through the same pipe.
-
-For technical details, see the [architecture doc](docs/architecture.md).
+All agents authenticate via browser login on the host machine. RemoClaw uses the local session — **no API keys required** for the agent itself.
 
 ## Features
 
