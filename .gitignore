@@ -26,3 +26,6 @@ htmlcov/
 
 # BMad installed skills (local tooling, like .venv)
 .kiro/skills/
+
+# Personal viral/launch planning notes (not for public repo)
+VIRAL_PLAN.md
