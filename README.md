@@ -16,6 +16,11 @@
 </p>
 
 <p align="center">
+  <strong>English</strong> ·
+  <a href="README.vi.md">Tiếng Việt</a>
+</p>
+
+<p align="center">
   <a href="docs/usage.md">Usage</a> ·
   <a href="docs/voice.md">Voice</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
