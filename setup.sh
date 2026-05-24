@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Chati — interactive setup wizard
+# RemoClaw — interactive setup wizard
 # Run: bash setup.sh
 #
 
@@ -242,15 +242,15 @@ EOF
     ok ".env created"
 fi
 
-# ── Step 9: Make chati executable ────────────────────────────────
+# ── Step 9: Make remoclaw executable ─────────────────────────────
 
-chmod +x "$DIR/chati"
+chmod +x "$DIR/remoclaw"
 
 # ── Done ─────────────────────────────────────────────────────────
 
 echo ""
 echo -e "${GREEN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}${BOLD}  Chati is ready!${NC}"
+echo -e "${GREEN}${BOLD}  RemoClaw is ready!${NC}"
 echo -e "${GREEN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo "  Make sure your CLI is logged in:"
@@ -261,16 +261,16 @@ case "$CLI_PROVIDER" in
     codex)  echo "    codex login" ;;
 esac
 echo ""
-echo "  Then start Chati:"
-echo "    ./chati start"
+echo "  Then start RemoClaw:"
+echo "    ./remoclaw start"
 echo ""
 echo "  Voice commands (in Telegram):"
 echo "    🎤 Send a voice message → bot transcribes and confirms"
 echo "    /voice                  → toggle voice responses on/off"
 echo ""
 echo "  Other commands:"
-echo "    ./chati stop       # stop"
-echo "    ./chati restart    # restart"
-echo "    ./chati status     # check status"
-echo "    ./chati log        # view logs"
+echo "    ./remoclaw stop       # stop"
+echo "    ./remoclaw restart    # restart"
+echo "    ./remoclaw status     # check status"
+echo "    ./remoclaw log        # view logs"
 echo ""

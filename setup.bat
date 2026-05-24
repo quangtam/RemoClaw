@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: ── Chati Setup Wizard for Windows ──────────────────────────────
+:: ── RemoClaw Setup Wizard for Windows ──────────────────────────────
 
 echo.
 echo    ██████╗██╗  ██╗ █████╗ ████████╗██╗
@@ -207,7 +207,7 @@ if /i "%WRITE_ENV%"=="y" (
 
 echo.
 echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-echo   Chati is ready!
+echo   RemoClaw is ready!
 echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 echo.
 echo   Make sure your CLI is logged in:
@@ -216,17 +216,17 @@ if "%CLI_PROVIDER%"=="claude" echo     claude login
 if "%CLI_PROVIDER%"=="gemini" echo     gemini auth
 if "%CLI_PROVIDER%"=="codex"  echo     codex login
 echo.
-echo   Then start Chati:
-echo     chati start
+echo   Then start RemoClaw:
+echo     remoclaw start
 echo.
 echo   Voice commands (in Telegram):
 echo     Send a voice message  -- bot transcribes and confirms
 echo     /voice                -- toggle voice responses on/off
 echo.
 echo   Other commands:
-echo     chati stop       -- stop
-echo     chati restart    -- restart
-echo     chati status     -- check status
-echo     chati log        -- view logs
+echo     remoclaw stop       -- stop
+echo     remoclaw restart    -- restart
+echo     remoclaw status     -- check status
+echo     remoclaw log        -- view logs
 echo.
 pause

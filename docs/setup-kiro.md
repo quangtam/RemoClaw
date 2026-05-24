@@ -1,4 +1,4 @@
-# Setup Chati with Kiro CLI
+# Setup RemoClaw with Kiro CLI
 
 ## Prerequisites
 
@@ -36,9 +36,9 @@ This opens a browser window. Sign in with your Kiro account. The session is save
 kiro-cli chat --no-interactive "say hello"
 ```
 
-You should see a response. If this works, Chati will work too.
+You should see a response. If this works, RemoClaw will work too.
 
-## Step 4: Configure Chati
+## Step 4: Configure RemoClaw
 
 Edit `.env`:
 
@@ -47,12 +47,12 @@ CLI_PROVIDER=kiro
 PROJECT_DIR=/path/to/your/project
 ```
 
-That's it. No API key needed — Chati uses your local login session.
+That's it. No API key needed — RemoClaw uses your local login session.
 
 ## Step 5: Start and verify
 
 ```bash
-./chati start
+./remoclaw start
 ```
 
 Send `/status` in Telegram — you should see:

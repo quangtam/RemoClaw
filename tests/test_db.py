@@ -27,7 +27,7 @@ from db import (
 def temp_db_path():
     """Provide a temporary DB file path, cleaned up after test."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        yield os.path.join(tmpdir, "test_chati.db")
+        yield os.path.join(tmpdir, "test_remoclaw.db")
 
 
 class TestGetDb:

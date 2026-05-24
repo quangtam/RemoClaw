@@ -1,30 +1,30 @@
-# Chati
+# RemoClaw
 
-```
-   ██████╗██╗  ██╗ █████╗ ████████╗██╗
-  ██╔════╝██║  ██║██╔══██╗╚══██╔══╝██║
-  ██║     ███████║███████║   ██║   ██║
-  ██║     ██╔══██║██╔══██║   ██║   ██║
-  ╚██████╗██║  ██║██║  ██║   ██║   ██║
-   ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝  ╚═╝
-        code from your pocket 💬→💻
+```text
+  ██████╗ ███████╗███╗   ███╗ ██████╗  ██████╗██╗      █████╗ ██╗    ██╗
+  ██╔══██╗██╔════╝████╗ ████║██╔═══██╗██╔════╝██║     ██╔══██╗██║    ██║
+  ██████╔╝█████╗  ██╔████╔██║██║   ██║██║     ██║     ███████║██║ █╗ ██║
+  ██╔══██╗██╔══╝  ██║╚██╔╝██║██║   ██║██║     ██║     ██╔══██║██║███╗██║
+  ██║  ██║███████╗██║ ╚═╝ ██║╚██████╔╝╚██████╗███████╗██║  ██║╚███╔███╔╝
+  ╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝ ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
+            remote control any AI coding agent 📱→💻
 ```
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Chat with any AI coding CLI from your phone. No laptop needed.
+Remote control any AI coding agent from your phone. No laptop needed.
 
 <p align="center">
-  <img src="assets/screenshot.jpg" alt="Chati screenshot" width="360" />
+  <img src="assets/screenshot.jpg" alt="RemoClaw screenshot" width="360" />
 </p>
 
 <p align="center">
-  <video src="https://github.com/quangtam/chati/raw/main/assets/demo.mp4" width="360" controls>
+  <video src="https://github.com/quangtam/remoclaw/raw/main/assets/demo.mp4" width="360" controls>
     Video demo
   </video>
 </p>
 
-Chati bridges your favorite messaging app to AI coding CLIs (Kiro, Claude Code, Gemini, Codex) — send a message, get code back. Voice in, voice out.
+RemoClaw bridges your favorite messaging app to AI coding CLIs (Kiro, Claude Code, Gemini, Codex) — send a message, get code back. Voice in, voice out. Code from anywhere.
 
 ## Features
 
@@ -80,7 +80,7 @@ Chati bridges your favorite messaging app to AI coding CLIs (Kiro, Claude Code, 
 | Gemini | `gemini` | `-p` | `gemini auth` on machine | [Setup Gemini](docs/setup-gemini.md) |
 | Codex | `codex` | `exec` | `codex login` on machine | [Setup Codex](docs/setup-codex.md) |
 
-> **Note:** All CLIs authenticate via browser login on the machine where Chati runs. Install the CLI, login once, and Chati uses that local session. No API keys needed for the CLI itself.
+> **Note:** All CLIs authenticate via browser login on the machine where RemoClaw runs. Install the CLI, login once, and RemoClaw uses that local session. No API keys needed for the CLI itself.
 
 ## Prerequisites
 
@@ -94,22 +94,22 @@ Chati bridges your favorite messaging app to AI coding CLIs (Kiro, Claude Code, 
 ## Quick Start
 
 ```bash
-git clone https://github.com/quangtam/chati.git
-cd chati
+git clone https://github.com/quangtam/remoclaw.git
+cd remoclaw
 ```
 
 **macOS / Linux:**
 
 ```bash
 bash setup.sh
-./chati start
+./remoclaw start
 ```
 
 **Windows:**
 
 ```cmd
 setup.bat
-chati start
+remoclaw start
 ```
 
 The setup wizard will:
@@ -127,8 +127,8 @@ After setup, login your CLI once and start:
 # Login your CLI (one time only)
 kiro-cli login    # or: claude login / gemini auth / codex login
 
-# Start Chati
-./chati start     # Windows: chati start
+# Start RemoClaw
+./remoclaw start     # Windows: remoclaw start
 ```
 
 ## Manual Setup
@@ -166,7 +166,7 @@ CLI_PROVIDER=kiro
 PROJECT_DIR=/path/to/your/project
 ```
 
-> **Auth:** Just login your CLI once on the machine (`kiro-cli login`, `claude login`, etc.). Chati uses that local session. No API keys needed in `.env`.
+> **Auth:** Just login your CLI once on the machine (`kiro-cli login`, `claude login`, etc.). RemoClaw uses that local session. No API keys needed in `.env`.
 
 ### 4. Install dependencies
 
@@ -179,11 +179,11 @@ pip install -r requirements.txt
 ### 5. Run
 
 ```bash
-./chati start      # start in background     (Windows: chati start)
-./chati stop       # stop                    (Windows: chati stop)
-./chati restart    # restart                 (Windows: chati restart)
-./chati status     # check if running        (Windows: chati status)
-./chati log        # tail -f logs            (Windows: chati log)
+./remoclaw start      # start in background     (Windows: remoclaw start)
+./remoclaw stop       # stop                    (Windows: remoclaw stop)
+./remoclaw restart    # restart                 (Windows: remoclaw restart)
+./remoclaw status     # check if running        (Windows: remoclaw status)
+./remoclaw log        # tail -f logs            (Windows: remoclaw log)
 ```
 
 ## Usage
@@ -215,11 +215,11 @@ pip install -r requirements.txt
 
 ### Chat
 
-Send any message — Chati forwards it to the configured CLI:
+Send any message — RemoClaw forwards it to the configured CLI:
 
 ```text
 You: Check sprint status
-Chati: [streaming response from CLI]
+RemoClaw: [streaming response from CLI]
 ```
 
 ### Thread-based sessions
@@ -231,21 +231,21 @@ Chati: [streaming response from CLI]
 
 ### Decision forwarding
 
-When the CLI asks a question (Y/n, file selection, etc.), Chati forwards it to you:
+When the CLI asks a question (Y/n, file selection, etc.), RemoClaw forwards it to you:
 
 ```text
-Chati: ⚠️ CLI is waiting for input
+RemoClaw: ⚠️ CLI is waiting for input
        > Apply changes to 3 files? [Y/n]
        Reply to proceed, or /cancel to abort.
 
 You: Y
 
-Chati: [continues streaming CLI output]
+RemoClaw: [continues streaming CLI output]
 ```
 
 ### Voice
 
-Send a voice message → Chati transcribes it and shows a confirmation keyboard:
+Send a voice message → RemoClaw transcribes it and shows a confirmation keyboard:
 
 ```text
 🎤 Transcription: "check the test results"
@@ -331,7 +331,7 @@ Key modules:
 
 | File | Responsibility |
 | ---- | -------------- |
-| `chati.py` | Telegram handlers, command routing, streaming orchestration |
+| `remoclaw.py` | Telegram handlers, command routing, streaming orchestration |
 | `session_manager.py` | PTY session pool, state machine, idle cleanup |
 | `cli_runner.py` | Subprocess wrapper, streaming, model listing |
 | `db.py` | SQLite persistence, schema migration, config resolution |

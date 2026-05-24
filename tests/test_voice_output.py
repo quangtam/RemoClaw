@@ -172,7 +172,7 @@ class TestVoiceOutputIntegration:
         self, telegram_update_factory, monkeypatch
     ):
         """When voice output is enabled and response is not code-heavy, voice is sent."""
-        import chati
+        import remoclaw
 
         update = telegram_update_factory(text="hello", message_thread_id=42)
         update.message.reply_voice = AsyncMock()
@@ -180,66 +180,66 @@ class TestVoiceOutputIntegration:
         synth = MagicMock()
         synth.synthesize = AsyncMock(return_value=b"fake-audio")
 
-        monkeypatch.setattr(chati, "voice_synthesizer", synth)
+        monkeypatch.setattr(remoclaw, "voice_synthesizer", synth)
 
         # Call the helper directly
-        await chati._send_voice_message(update, b"fake-audio")
+        await remoclaw._send_voice_message(update, b"fake-audio")
         update.message.reply_voice.assert_awaited_once()
 
     async def test_is_voice_output_enabled_per_thread_override(self):
         """Per-thread override takes precedence over global config."""
-        import chati
+        import remoclaw
 
         ctx = _make_context(bot_data={"thread:42:voice_output": True})
-        assert await chati._is_voice_output_enabled(42, ctx) is True
+        assert await remoclaw._is_voice_output_enabled(42, ctx) is True
 
         ctx2 = _make_context(bot_data={"thread:42:voice_output": False})
-        assert await chati._is_voice_output_enabled(42, ctx2) is False
+        assert await remoclaw._is_voice_output_enabled(42, ctx2) is False
 
     async def test_is_voice_output_enabled_falls_back_to_global(self, temp_db_path):
         """Without per-thread override, falls back to global config."""
-        import chati
+        import remoclaw
         import db as db_module
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
 
         ctx = _make_context()
         # Global default is False (from config)
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_output_enabled", False, create=True):
-            assert await chati._is_voice_output_enabled(42, ctx) is False
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_output_enabled", False, create=True):
+            assert await remoclaw._is_voice_output_enabled(42, ctx) is False
 
         ctx2 = _make_context()
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_output_enabled", True, create=True):
-            assert await chati._is_voice_output_enabled(42, ctx2) is True
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_output_enabled", True, create=True):
+            assert await remoclaw._is_voice_output_enabled(42, ctx2) is True
 
     async def test_strip_html_for_tts(self):
         """HTML tags and entities are stripped for TTS input."""
-        import chati
+        import remoclaw
 
         html = "<b>Hello</b> &amp; <code>world</code>"
-        result = chati._strip_html_for_tts(html)
+        result = remoclaw._strip_html_for_tts(html)
         assert result == "Hello & world"
 
     async def test_strip_html_for_tts_collapses_whitespace(self):
-        import chati
+        import remoclaw
 
         html = "Hello   \n\n   world"
-        result = chati._strip_html_for_tts(html)
+        result = remoclaw._strip_html_for_tts(html)
         assert result == "Hello world"
 
     async def test_send_voice_message_handles_failure_gracefully(
         self, telegram_update_factory
     ):
         """If reply_voice fails, it logs but doesn't raise."""
-        import chati
+        import remoclaw
 
         update = telegram_update_factory(text="x")
         update.message.reply_voice = AsyncMock(side_effect=RuntimeError("Telegram error"))
 
         # Should not raise
-        await chati._send_voice_message(update, b"audio")
+        await remoclaw._send_voice_message(update, b"audio")
 
 
 # ─── /voice toggle command ──────────────────────────────────────────────────
@@ -249,41 +249,49 @@ class TestCmdVoice:
     """Tests for the /voice toggle command."""
 
     async def test_voice_disabled_shows_not_configured(self, telegram_update_factory):
-        import chati
+        import remoclaw
 
         update = telegram_update_factory(text="/voice")
         ctx = _make_context()
 
-        with patch.object(chati.config, "voice_enabled", False, create=True):
-            await chati.cmd_voice(update, ctx)
+        with patch.object(remoclaw.config, "voice_enabled", False, create=True):
+            await remoclaw.cmd_voice(update, ctx)
 
         update.message.reply_text.assert_awaited_once()
         msg = update.message.reply_text.call_args.args[0]
         assert "not configured" in msg
 
-    async def test_voice_toggle_enables(self, telegram_update_factory):
-        import chati
+    async def test_voice_toggle_enables(self, telegram_update_factory, temp_db_path):
+        import remoclaw
+        import db as db_module
+
+        await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
 
         update = telegram_update_factory(text="/voice", message_thread_id=42)
         ctx = _make_context()
 
-        with patch.object(chati.config, "voice_enabled", True, create=True), \
-             patch.object(chati.config, "voice_output_enabled", False, create=True):
-            await chati.cmd_voice(update, ctx)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_enabled", True, create=True), \
+             patch.object(remoclaw.config, "voice_output_enabled", False, create=True):
+            await remoclaw.cmd_voice(update, ctx)
 
         # Should have toggled from False → True
         assert ctx.bot_data.get("thread:42:voice_output") is True
         msg = update.message.reply_text.call_args.args[0]
         assert "enabled" in msg
 
-    async def test_voice_toggle_disables(self, telegram_update_factory):
-        import chati
+    async def test_voice_toggle_disables(self, telegram_update_factory, temp_db_path):
+        import remoclaw
+        import db as db_module
+
+        await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
 
         update = telegram_update_factory(text="/voice", message_thread_id=42)
         ctx = _make_context(bot_data={"thread:42:voice_output": True})
 
-        with patch.object(chati.config, "voice_enabled", True, create=True):
-            await chati.cmd_voice(update, ctx)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_enabled", True, create=True):
+            await remoclaw.cmd_voice(update, ctx)
 
         assert ctx.bot_data.get("thread:42:voice_output") is False
         msg = update.message.reply_text.call_args.args[0]

@@ -1,4 +1,4 @@
-"""Chati — chat with any AI coding CLI from your phone.
+"""RemoClaw — Remote control any AI coding agent from your phone.
 
 Bridges messaging apps to AI CLIs (Kiro, Claude Code, Gemini, Codex)
 in headless mode with streaming output.
@@ -159,7 +159,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command."""
     model = context.user_data.get("model", "auto")
     await update.message.reply_text(
-        f"🚀 <b>Chati</b> — {_escape_html(runner.provider.name)}\n\n"
+        f"🚀 <b>RemoClaw</b> — {_escape_html(runner.provider.name)}\n\n"
         "Gửi tin nhắn bất kỳ → CLI xử lý trong project:\n"
         f"<code>{config.project_dir}</code>\n\n"
         "<b>Commands:</b>\n"
@@ -183,7 +183,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     model = context.user_data.get("model", "auto")
 
     await update.message.reply_text(
-        "📖 <b>Chati v2.0 — Command Reference</b>\n\n"
+        "📖 <b>RemoClaw v2.0 — Command Reference</b>\n\n"
 
         "<b>💬 Chat:</b>\n"
         "Send any message → forwarded to CLI\n"
@@ -2094,8 +2094,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 # ── Main ─────────────────────────────────────────────────────────
 
 def main() -> None:
-    """Start Chati."""
-    logger.info("Starting Chati")
+    """Start RemoClaw."""
+    logger.info("Starting RemoClaw")
     logger.info("Project: %s", config.project_dir)
     logger.info("Allowed users: %s", config.allowed_user_ids)
     logger.info("CLI Provider: %s", config.cli_provider)

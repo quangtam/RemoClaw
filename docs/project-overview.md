@@ -1,8 +1,8 @@
-# Chati — Project Overview
+# RemoClaw — Project Overview
 
 ## Purpose
 
-Chati is a Python Telegram bot that bridges messaging apps to AI coding CLIs (Kiro, Claude Code, Gemini, Codex) in headless/interactive mode. It enables developers to interact with AI coding assistants from any chat app — no laptop needed.
+RemoClaw is a Python Telegram bot that bridges messaging apps to AI coding CLIs (Kiro, Claude Code, Gemini, Codex) in headless/interactive mode. It enables developers to interact with AI coding assistants from any chat app — no laptop needed.
 
 **Tagline:** *Code from your pocket.*
 
@@ -16,7 +16,7 @@ Chati is a Python Telegram bot that bridges messaging apps to AI coding CLIs (Ki
 | **Architecture Style** | Event-driven, async subprocess management |
 | **License** | MIT |
 | **Version** | 1.0.1 |
-| **Repository** | [github.com/quangtam/chati](https://github.com/quangtam/chati) |
+| **Repository** | [github.com/quangtam/remoclaw](https://github.com/quangtam/remoclaw) |
 
 ## Tech Stack Summary
 
@@ -48,12 +48,12 @@ Single-part monolith. All code in the root directory plus one sub-package:
 
 | Path | Purpose |
 | ---- | ------- |
-| `chati.py` | Main entry — handlers, auth, streaming |
+| `remoclaw.py` | Main entry — handlers, auth, streaming |
 | `cli_runner.py` | Subprocess manager with PTY sessions |
 | `config.py` | Env-based immutable configuration |
 | `message_utils.py` | ANSI strip, MD→HTML, message splitting |
 | `cli_providers/` | CLI driver package (base, registry, 4 providers) |
-| `chati` / `chati.bat` | Management scripts (POSIX / Windows) |
+| `remoclaw` / `remoclaw.bat` | Management scripts (POSIX / Windows) |
 | `setup.sh` / `setup.bat` | Interactive setup wizards |
 | `.env` | Secrets (gitignored) |
 

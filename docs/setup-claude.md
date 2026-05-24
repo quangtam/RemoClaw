@@ -1,4 +1,4 @@
-# Setup Chati with Claude Code
+# Setup RemoClaw with Claude Code
 
 ## Prerequisites
 
@@ -31,9 +31,9 @@ This opens a browser window. Sign in with your Anthropic account. The session is
 claude -p "say hello"
 ```
 
-You should see a response. If this works, Chati will work too.
+You should see a response. If this works, RemoClaw will work too.
 
-## Step 4: Configure Chati
+## Step 4: Configure RemoClaw
 
 Edit `.env`:
 
@@ -42,14 +42,14 @@ CLI_PROVIDER=claude
 PROJECT_DIR=/path/to/your/project
 ```
 
-That's it. No API key needed — Chati uses your local login session.
+That's it. No API key needed — RemoClaw uses your local login session.
 
 > **Optional:** If you prefer API key auth instead of local login, set `ANTHROPIC_API_KEY=sk-ant-...` in `.env`.
 
 ## Step 5: Start and verify
 
 ```bash
-./chati start
+./remoclaw start
 ```
 
 Send `/status` in Telegram — you should see the Claude Code version.

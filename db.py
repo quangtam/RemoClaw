@@ -20,7 +20,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = "chati.db"
+DB_PATH = "remoclaw.db"
 DEFAULT_THREAD_ID = 0  # sentinel for "main chat" (no message_thread_id)
 
 

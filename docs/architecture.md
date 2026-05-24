@@ -1,8 +1,8 @@
-# Chati — Architecture
+# RemoClaw — Architecture
 
 ## Executive Summary
 
-Chati is a single-process async Python bot that:
+RemoClaw is a single-process async Python bot that:
 
 1. Receives messages from Telegram via long polling (`python-telegram-bot`)
 2. Routes messages to a per-thread CLI subprocess (persistent PTY session when possible)
@@ -17,7 +17,7 @@ Chati is a single-process async Python bot that:
 └─────────────────┘      └──────────────────┬───────────────────────┘
                                             │
                                   ┌─────────▼──────────┐
-                                  │    chati.py        │
+                                  │    remoclaw.py        │
                                   │  (handlers + auth) │
                                   └─────────┬──────────┘
                                             │
@@ -105,7 +105,7 @@ _exit_codes: dict[int | None, int]          # last exit per thread
 
 ### 3. Persistent PTY Sessions
 
-Cold-starting `kiro-cli chat --no-interactive` takes ~6-10s (MCP init, session setup). To avoid this per-message cost, Chati spawns an **interactive** CLI via `pty.fork()` and keeps it alive:
+Cold-starting `kiro-cli chat --no-interactive` takes ~6-10s (MCP init, session setup). To avoid this per-message cost, RemoClaw spawns an **interactive** CLI via `pty.fork()` and keeps it alive:
 
 - Write prompts to PTY fd via `os.write()`
 - Read responses via `select.select()` + `os.read()` (runs in executor thread)
@@ -116,7 +116,7 @@ Falls back to `--no-interactive` one-shot if provider doesn't implement `build_i
 
 ### 4. Streaming with Rate-Limited Edits
 
-Telegram API limits message edits to ~30/min/chat. Chati:
+Telegram API limits message edits to ~30/min/chat. RemoClaw:
 
 - Sends one initial "⏳ Connecting..." message
 - Buffers stream output in `preview_buffer`
@@ -129,11 +129,11 @@ Telegram API limits message edits to ~30/min/chat. Chati:
 Two concurrent tasks protect against stuck processes and user UX:
 
 - **Idle watchdog** in `cli_runner.py`: warns user every 30s if no PTY output, kills on global timeout (600s default, configurable)
-- **Typing keepalive** in `chati.py`: background `asyncio.Task` sends `ChatAction.TYPING` every 4s, independent of stream loop
+- **Typing keepalive** in `remoclaw.py`: background `asyncio.Task` sends `ChatAction.TYPING` every 4s, independent of stream loop
 
 ## Component Responsibilities
 
-### `chati.py` (Main Entry)
+### `remoclaw.py` (Main Entry)
 
 - Loads config via `Config.from_env()`
 - Builds `python-telegram-bot` `Application` with `concurrent_updates(True)`
@@ -189,7 +189,7 @@ Pipeline: `format_output(text) = strip_ansi → extract_final_response → markd
 ## Security
 
 - **Whitelist auth**: `ALLOWED_USER_IDS` in `.env`; `@authorized` decorator rejects others
-- **Local login**: CLIs authenticate via their own mechanism (browser OAuth), Chati doesn't handle credentials
+- **Local login**: CLIs authenticate via their own mechanism (browser OAuth), RemoClaw doesn't handle credentials
 - **API key fallback**: optional env vars for headless/SSH machines without browser
 - **Secrets**: `.env` is gitignored; `.env.example` provides template
 - **Tool trust**: `CLI_TRUST_ALL_TOOLS=true` by default — user controls this per-provider
@@ -225,7 +225,7 @@ Pipeline: `format_output(text) = strip_ansi → extract_final_response → markd
 
 ## Deployment Architecture
 
-Chati is designed as a **long-running process on a single machine**:
+RemoClaw is designed as a **long-running process on a single machine**:
 
 - No external dependencies (database, message queue, cache)
 - State is in-memory (thread sessions reset on restart)

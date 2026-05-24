@@ -1,4 +1,4 @@
-# Chati — Development Guide
+# RemoClaw — Development Guide
 
 ## Prerequisites
 
@@ -12,8 +12,8 @@
 ### Clone and Setup
 
 ```bash
-git clone https://github.com/quangtam/chati.git
-cd chati
+git clone https://github.com/quangtam/remoclaw.git
+cd remoclaw
 ```
 
 ### Option A: Setup Wizard (recommended)
@@ -76,36 +76,36 @@ See `.env.example` for full documentation of optional variables.
 **POSIX:**
 
 ```bash
-./chati start
+./remoclaw start
 ```
 
 **Windows:**
 
 ```cmd
-chati start
+remoclaw start
 ```
 
 ### Other commands
 
 ```bash
-./chati stop      # Stop the bot
-./chati restart   # Restart (handles 409 Conflict by waiting)
-./chati status    # Show PID and uptime
-./chati log       # Follow logs with tail -f
+./remoclaw stop      # Stop the bot
+./remoclaw restart   # Restart (handles 409 Conflict by waiting)
+./remoclaw status    # Show PID and uptime
+./remoclaw log       # Follow logs with tail -f
 ```
 
 ### Direct Python (foreground, useful for debugging)
 
 ```bash
-.venv/bin/python chati.py
+.venv/bin/python remoclaw.py
 ```
 
 ## Logs
 
-Logs are written to `chati.log` (rolling append). Format:
+Logs are written to `remoclaw.log` (rolling append). Format:
 
 ```text
-2026-05-05 12:34:56 [INFO] __main__: Starting Chati
+2026-05-05 12:34:56 [INFO] __main__: Starting RemoClaw
 2026-05-05 12:34:56 [INFO] __main__: CLI Provider: kiro
 ```
 
@@ -184,7 +184,7 @@ class MyCLIProvider(CliProvider):
 
 Manual testing workflow:
 
-1. Start Chati: `./chati start`
+1. Start RemoClaw: `./remoclaw start`
 2. Open your bot in Telegram
 3. Send `/start` → should show welcome message
 4. Send `/status` → should show CLI ready
@@ -196,8 +196,8 @@ Manual testing workflow:
 
 ### Bot not responding
 
-1. `./chati status` — verify process is running
-2. `./chati log` — check for errors
+1. `./remoclaw status` — verify process is running
+2. `./remoclaw log` — check for errors
 3. Verify `ALLOWED_USER_IDS` in `.env` matches your Telegram user ID
 4. Test CLI binary directly: `kiro-cli whoami` (or equivalent)
 
@@ -205,10 +205,10 @@ Manual testing workflow:
 
 Only one bot instance can poll a token. Causes:
 
-- Multiple Chati instances running
+- Multiple RemoClaw instances running
 - Another bot using the same token
 
-Fix: `./chati restart` (waits 3s for Telegram to release)
+Fix: `./remoclaw restart` (waits 3s for Telegram to release)
 
 ### Stuck sessions
 

@@ -1,4 +1,4 @@
-# Chati — Documentation Index
+# RemoClaw — Documentation Index
 
 > Generated: 2026-05-05
 > Scan level: Exhaustive
@@ -9,14 +9,14 @@
 - **Type:** Monolith (single Python application)
 - **Primary Language:** Python 3.12+
 - **Architecture:** Async event-driven with pluggable CLI providers
-- **Repository:** [github.com/quangtam/chati](https://github.com/quangtam/chati)
+- **Repository:** [github.com/quangtam/remoclaw](https://github.com/quangtam/remoclaw)
 
 ## Quick Reference
 
 | Attribute | Value |
 | --------- | ----- |
 | Tech Stack | Python + python-telegram-bot + asyncio + PTY |
-| Entry Point | `chati.py` → `main()` |
+| Entry Point | `remoclaw.py` → `main()` |
 | Architecture Pattern | Event-driven, per-thread subprocess orchestration |
 | Extension Point | `cli_providers/*.py` (pluggable drivers) |
 | License | MIT |
@@ -48,10 +48,10 @@
 
 ### For Users
 
-1. Clone repo: `git clone https://github.com/quangtam/chati.git`
+1. Clone repo: `git clone https://github.com/quangtam/remoclaw.git`
 2. Run setup wizard: `bash setup.sh` (or `setup.bat` on Windows)
 3. Login your CLI: `kiro-cli login` (or equivalent)
-4. Start Chati: `./chati start`
+4. Start RemoClaw: `./remoclaw start`
 5. Message your Telegram bot
 
 ### For Contributors
@@ -74,14 +74,14 @@
 ## File Map
 
 ```text
-chati/
-├── chati.py                # Entry point + handlers
+remoclaw/
+├── remoclaw.py                # Entry point + handlers
 ├── cli_runner.py           # Subprocess + PTY manager
 ├── config.py               # .env → Config dataclass
 ├── message_utils.py        # ANSI strip + MD→HTML pipeline
 ├── cli_providers/          # Pluggable driver package
 ├── docs/                   # This documentation
-├── chati / chati.bat       # Management scripts
+├── remoclaw / remoclaw.bat       # Management scripts
 ├── setup.sh / setup.bat    # Setup wizards
 └── .env                    # Secrets (gitignored)
 ```

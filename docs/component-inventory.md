@@ -1,4 +1,4 @@
-# Chati — Component Inventory
+# RemoClaw — Component Inventory
 
 ## Python Modules
 
@@ -6,7 +6,7 @@
 
 | Module | Purpose | Key Classes/Functions |
 | ------ | ------- | --------------------- |
-| `chati.py` | Telegram handlers + orchestration | `main()`, `authorized()`, `cmd_*`, `handle_*`, `_execute_and_reply()` |
+| `remoclaw.py` | Telegram handlers + orchestration | `main()`, `authorized()`, `cmd_*`, `handle_*`, `_execute_and_reply()` |
 | `cli_runner.py` | Subprocess management | `CliRunner`, `CliResult`, `_PtySession` |
 | `config.py` | Configuration loading | `Config` (frozen dataclass), `Config.from_env()` |
 | `message_utils.py` | Output text pipeline | `format_output()`, `split_message()`, `strip_ansi()`, `extract_final_response()`, `markdown_to_telegram_html()` |
@@ -37,7 +37,7 @@ Each provider implements the `CliProvider` ABC from `base.py`. All have these cl
 
 ## Command Handlers (Telegram)
 
-Registered in `chati.py:main()`. All wrapped with `@authorized`.
+Registered in `remoclaw.py:main()`. All wrapped with `@authorized`.
 
 | Command | Handler | Purpose |
 | ------- | ------- | ------- |
@@ -56,7 +56,7 @@ Registered in `chati.py:main()`. All wrapped with `@authorized`.
 
 ## Core Functions by Module
 
-### `chati.py`
+### `remoclaw.py`
 
 | Function | Category | Role |
 | -------- | -------- | ---- |
@@ -120,8 +120,8 @@ Registered in `chati.py:main()`. All wrapped with `@authorized`.
 
 | Script | Platform | Commands |
 | ------ | -------- | -------- |
-| `chati` | POSIX | `start`, `stop`, `restart`, `status`, `log` |
-| `chati.bat` | Windows | Same as above |
+| `remoclaw` | POSIX | `start`, `stop`, `restart`, `status`, `log` |
+| `remoclaw.bat` | Windows | Same as above |
 | `setup.sh` | POSIX | Interactive wizard: Python check, venv, deps, CLI choice, Telegram config, `.env` generation |
 | `setup.bat` | Windows | Same as above |
 
@@ -129,10 +129,10 @@ Registered in `chati.py:main()`. All wrapped with `@authorized`.
 
 | Constant | Location | Value | Purpose |
 | -------- | -------- | ----- | ------- |
-| `MAX_MSG_LEN` | `chati.py` | 4096 | Telegram message limit |
-| `_STREAM_UPDATE_INTERVAL` | `chati.py` | 1.5 | Seconds between message edits |
-| `_STREAM_PREVIEW_MAX` | `chati.py` | 3000 | Max preview chars |
-| `_TYPING_KEEPALIVE_INTERVAL` | `chati.py` | 4.0 | Seconds between typing indicators |
+| `MAX_MSG_LEN` | `remoclaw.py` | 4096 | Telegram message limit |
+| `_STREAM_UPDATE_INTERVAL` | `remoclaw.py` | 1.5 | Seconds between message edits |
+| `_STREAM_PREVIEW_MAX` | `remoclaw.py` | 3000 | Max preview chars |
+| `_TYPING_KEEPALIVE_INTERVAL` | `remoclaw.py` | 4.0 | Seconds between typing indicators |
 | `IDLE_WARN_INTERVAL` | `cli_runner.py` | 30 | Seconds before idle warning |
 | `_INIT_TIMEOUT` | `cli_runner.py` | 60 | PTY init deadline |
 | `MAX_MESSAGE_LENGTH` | `message_utils.py` | 4096 | Split threshold |
@@ -151,6 +151,6 @@ Registered in `chati.py:main()`. All wrapped with `@authorized`.
 | -------- | ---------- | ------- |
 | `.venv/` | `setup.sh`/`setup.bat` | Python virtual environment |
 | `.env` | `setup.sh`/`setup.bat` | Secrets and config |
-| `chati.log` | `chati` script | Logs from `nohup` redirect |
-| `.chati.pid` | `chati` script | PID file for process tracking |
+| `remoclaw.log` | `remoclaw` script | Logs from `nohup` redirect |
+| `.remoclaw.pid` | `remoclaw` script | PID file for process tracking |
 | `__pycache__/` | Python | Bytecode cache |

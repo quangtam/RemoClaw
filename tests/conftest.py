@@ -37,7 +37,7 @@ class _ConfigShim:
     """Test-only shim that exposes a wider allowed_user_ids frozenset.
 
     The real Config is a frozen dataclass (immutable). We swap the whole
-    chati.config object for this shim during tests so the @authorized
+    remoclaw.config object for this shim during tests so the @authorized
     decorator accepts our fake test user IDs.
     """
 
@@ -52,11 +52,11 @@ class _ConfigShim:
 @pytest.fixture(autouse=True)
 def patch_allowed_users():
     """Allow test user IDs through the @authorized decorator. Auto-applied."""
-    import chati
-    original = chati.config
-    chati.config = _ConfigShim(original)
+    import remoclaw
+    original = remoclaw.config
+    remoclaw.config = _ConfigShim(original)
     yield
-    chati.config = original
+    remoclaw.config = original
 
 
 # ─── Runtime state cleanup (auto-applied) ────────────────────────────────────
@@ -69,16 +69,16 @@ def clean_state():
     Auto-applied because every test that touches chati handlers can
     accidentally leak state into the next test via module-level dicts.
     """
-    import chati
+    import remoclaw
     # Save pre-test state (defensive — shouldn't normally have any)
-    chati._thread_tasks.clear()
-    chati._thread_sessions.clear()
-    chati.runner._session_mgr._sessions.clear()
+    remoclaw._thread_tasks.clear()
+    remoclaw._thread_sessions.clear()
+    remoclaw.runner._session_mgr._sessions.clear()
     yield
     # Always clean up after test
-    chati._thread_tasks.clear()
-    chati._thread_sessions.clear()
-    chati.runner._session_mgr._sessions.clear()
+    remoclaw._thread_tasks.clear()
+    remoclaw._thread_sessions.clear()
+    remoclaw.runner._session_mgr._sessions.clear()
 
 
 # ─── Temp SQLite path ────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ def clean_state():
 def temp_db_path():
     """Fresh on-disk SQLite path, cleaned up after the test."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        yield os.path.join(tmpdir, "test_chati.db")
+        yield os.path.join(tmpdir, "test_remoclaw.db")
 
 
 # ─── in_memory_db ────────────────────────────────────────────────────────────

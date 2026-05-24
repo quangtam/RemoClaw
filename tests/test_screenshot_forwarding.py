@@ -130,7 +130,7 @@ class TestSendScreenshots:
         img_path = tmp_path / "small.png"
         img_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 100)
 
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         count = await _send_screenshots(mock_update, [str(img_path)])
 
@@ -144,7 +144,7 @@ class TestSendScreenshots:
         big_path = tmp_path / "big.png"
         big_path.write_bytes(b"x" * (11 * 1024 * 1024))  # 11MB
 
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         count = await _send_screenshots(mock_update, [str(big_path)])
 
@@ -154,7 +154,7 @@ class TestSendScreenshots:
 
     @pytest.mark.asyncio
     async def test_file_not_exists_skipped(self, mock_update):
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         count = await _send_screenshots(mock_update, ["/nonexistent/path.png"])
 
@@ -167,7 +167,7 @@ class TestSendScreenshots:
         good_path = tmp_path / "good.png"
         good_path.write_bytes(b"\x89PNG" + b"x" * 50)
 
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         count = await _send_screenshots(
             mock_update,
@@ -185,7 +185,7 @@ class TestSendScreenshots:
         img_path = tmp_path / "shot.png"
         img_path.write_bytes(b"\x89PNG" + b"x" * 50)
 
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         count = await _send_screenshots(
             mock_update,
@@ -206,7 +206,7 @@ class TestSendScreenshots:
             side_effect=Exception("Telegram API error")
         )
 
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         # Should not crash — logs warning, continues
         count = await _send_screenshots(mock_update, [str(img_path)])
@@ -215,7 +215,7 @@ class TestSendScreenshots:
 
     @pytest.mark.asyncio
     async def test_empty_path_list(self, mock_update):
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         count = await _send_screenshots(mock_update, [])
 
@@ -230,7 +230,7 @@ class TestSendScreenshots:
             p.write_bytes(b"\x89PNG" + b"x" * 50)
             paths.append(str(p))
 
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         count = await _send_screenshots(mock_update, paths)
 
@@ -240,7 +240,7 @@ class TestSendScreenshots:
     @pytest.mark.asyncio
     async def test_isfile_oserror_skipped(self, mock_update):
         """OSError from os.path.isfile is caught and path is skipped."""
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         with patch("os.path.isfile", side_effect=OSError("permission denied")):
             count = await _send_screenshots(mock_update, ["/some/path.png"])
@@ -254,7 +254,7 @@ class TestSendScreenshots:
         img_path = tmp_path / "shot.png"
         img_path.write_bytes(b"\x89PNG" + b"x" * 50)
 
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         with patch("os.path.getsize", side_effect=OSError("permission denied")):
             count = await _send_screenshots(mock_update, [str(img_path)])
@@ -272,7 +272,7 @@ class TestSendScreenshots:
             side_effect=Exception("Telegram API error")
         )
 
-        from chati import _send_screenshots
+        from remoclaw import _send_screenshots
 
         count = await _send_screenshots(mock_update, [str(big_path)])
 

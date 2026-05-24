@@ -1,4 +1,4 @@
-# Chati — Source Tree Analysis
+# RemoClaw — Source Tree Analysis
 
 ## Annotated Directory Tree
 
@@ -74,11 +74,11 @@ chati/
 
 ### Source Code (root)
 
-All application code lives at the root level except for the providers sub-package. This is intentional — Chati is a small focused tool, flat structure keeps imports simple.
+All application code lives at the root level except for the providers sub-package. This is intentional — RemoClaw is a small focused tool, flat structure keeps imports simple.
 
 | File | Role | Key Exports |
 | ---- | ---- | ----------- |
-| `chati.py` | Application entry point | `main()`, handler functions, `_execute_and_reply` |
+| `remoclaw.py` | Application entry point | `main()`, handler functions, `_execute_and_reply` |
 | `cli_runner.py` | Subprocess orchestration | `CliRunner`, `CliResult`, `_PtySession` |
 | `config.py` | Configuration | `Config` dataclass, `Config.from_env()` |
 | `message_utils.py` | Output formatting | `format_output`, `split_message`, `strip_ansi` |
@@ -100,7 +100,7 @@ The only place contributors need to touch when adding new CLI support. Each `.py
 
 ### `_bmad/` (BMad Framework)
 
-Metadata and scripts for the [BMad Method](https://docs.bmad-method.org/) — a structured AI workflow framework. Not part of Chati's runtime; used for AI-assisted development of Chati itself.
+Metadata and scripts for the [BMad Method](https://docs.bmad-method.org/) — a structured AI workflow framework. Not part of RemoClaw's runtime; used for AI-assisted development of RemoClaw itself.
 
 ### `.kiro/skills/` (Kiro IDE Skills)
 
@@ -111,7 +111,7 @@ Skill definitions for Kiro IDE integration. These are consumed by `kiro-cli` whe
 | Scenario | Entry Point |
 | -------- | ----------- |
 | **User installation** | `setup.sh` or `setup.bat` |
-| **Starting the bot** | `./chati start` → `chati.py::main()` |
+| **Starting the bot** | `./remoclaw start` → `chati.py::main()` |
 | **Python direct** | `python chati.py` |
 | **Adding a CLI provider** | Create file in `cli_providers/` inheriting `CliProvider` |
 | **Changing behavior** | Edit `.env`, restart |
@@ -120,19 +120,19 @@ Skill definitions for Kiro IDE integration. These are consumed by `kiro-cli` whe
 
 | File | Lines | Complexity |
 | ---- | ----- | ---------- |
-| `chati.py` | ~630 | High — main coordination logic |
+| `remoclaw.py` | ~630 | High — main coordination logic |
 | `cli_runner.py` | ~470 | High — subprocess + PTY management |
 | `message_utils.py` | ~440 | Medium — text processing |
 | `cli_providers/*.py` | 30-80 each | Low — simple strategy implementations |
 | `config.py` | ~90 | Low — dataclass + env loading |
-| `chati` (bash) | ~115 | Low — process management |
-| `chati.bat` | ~130 | Low — Windows equivalent |
+| `remoclaw` (bash) | ~115 | Low — process management |
+| `remoclaw.bat` | ~130 | Low — Windows equivalent |
 | `setup.sh` | ~210 | Low — linear interactive script |
 | `setup.bat` | ~190 | Low — Windows equivalent |
 
 ## Integration Points
 
-Chati is a monolith, but it integrates with external systems:
+RemoClaw is a monolith, but it integrates with external systems:
 
 | External | Protocol | Direction |
 | -------- | -------- | --------- |

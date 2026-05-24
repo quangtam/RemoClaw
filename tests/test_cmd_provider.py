@@ -12,11 +12,11 @@ from db import DEFAULT_THREAD_ID, get_thread_config, init_db, upsert_thread_conf
 @pytest.fixture
 def clean_runner():
     """Ensure runner has no active sessions during test."""
-    import chati
-    original_sessions = chati.runner._sessions.copy()
-    chati.runner._sessions.clear()
-    yield chati.runner
-    chati.runner._sessions = original_sessions
+    import remoclaw
+    original_sessions = remoclaw.runner._sessions.copy()
+    remoclaw.runner._sessions.clear()
+    yield remoclaw.runner
+    remoclaw.runner._sessions = original_sessions
 
 
 class TestCmdProvider:
@@ -25,13 +25,13 @@ class TestCmdProvider:
     async def test_valid_switch_persists(
         self, telegram_update_factory, temp_db_path, clean_runner
     ):
-        from chati import cmd_provider
+        from remoclaw import cmd_provider
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
         update = telegram_update_factory(text="/provider claude")
         ctx = MagicMock()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_provider(update, ctx)
 
         config = await get_thread_config(DEFAULT_THREAD_ID, path=temp_db_path)
@@ -45,13 +45,13 @@ class TestCmdProvider:
     async def test_no_argument_shows_available(
         self, telegram_update_factory, temp_db_path, clean_runner
     ):
-        from chati import cmd_provider
+        from remoclaw import cmd_provider
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
         update = telegram_update_factory(text="/provider")
         ctx = MagicMock()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_provider(update, ctx)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -61,13 +61,13 @@ class TestCmdProvider:
     async def test_invalid_provider_rejected(
         self, telegram_update_factory, temp_db_path, clean_runner
     ):
-        from chati import cmd_provider
+        from remoclaw import cmd_provider
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
         update = telegram_update_factory(text="/provider notreal")
         ctx = MagicMock()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_provider(update, ctx)
 
         # Provider should NOT have been changed
@@ -80,7 +80,7 @@ class TestCmdProvider:
     async def test_active_session_blocks_switch(
         self, telegram_update_factory, temp_db_path, clean_runner
     ):
-        from chati import cmd_provider
+        from remoclaw import cmd_provider
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
 
@@ -92,7 +92,7 @@ class TestCmdProvider:
         update = telegram_update_factory(text="/provider claude")
         ctx = MagicMock()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_provider(update, ctx)
 
         # Provider should NOT have changed
@@ -105,7 +105,7 @@ class TestCmdProvider:
     async def test_dead_session_allows_switch(
         self, telegram_update_factory, temp_db_path, clean_runner
     ):
-        from chati import cmd_provider
+        from remoclaw import cmd_provider
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
 
@@ -117,7 +117,7 @@ class TestCmdProvider:
         update = telegram_update_factory(text="/provider gemini")
         ctx = MagicMock()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_provider(update, ctx)
 
         config = await get_thread_config(DEFAULT_THREAD_ID, path=temp_db_path)
@@ -126,13 +126,13 @@ class TestCmdProvider:
     async def test_persists_across_restarts(
         self, telegram_update_factory, temp_db_path, clean_runner
     ):
-        from chati import cmd_provider
+        from remoclaw import cmd_provider
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
         update = telegram_update_factory(text="/provider codex")
         ctx = MagicMock()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_provider(update, ctx)
 
         # Simulate restart (new init_db is idempotent)
@@ -144,13 +144,13 @@ class TestCmdProvider:
     async def test_case_insensitive_provider_name(
         self, telegram_update_factory, temp_db_path, clean_runner
     ):
-        from chati import cmd_provider
+        from remoclaw import cmd_provider
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
         update = telegram_update_factory(text="/provider CLAUDE")
         ctx = MagicMock()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_provider(update, ctx)
 
         config = await get_thread_config(DEFAULT_THREAD_ID, path=temp_db_path)
@@ -163,7 +163,7 @@ class TestHandleModelCallbackPersistence:
     async def test_model_selection_persists(
         self, telegram_update_factory, temp_db_path
     ):
-        from chati import handle_model_callback
+        from remoclaw import handle_model_callback
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
 
@@ -183,7 +183,7 @@ class TestHandleModelCallbackPersistence:
         ctx = MagicMock()
         ctx.user_data = {}
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await handle_model_callback(update, ctx)
 
         config = await get_thread_config(DEFAULT_THREAD_ID, path=temp_db_path)
@@ -196,7 +196,7 @@ class TestHandleModelCallbackPersistence:
         self, telegram_update_factory, temp_db_path
     ):
         """If thread has no row yet, model is stored in user_data only (no crash)."""
-        from chati import handle_model_callback
+        from remoclaw import handle_model_callback
 
         # DB with schema but no default row
         async with __import__("db").get_db(temp_db_path) as conn:
@@ -226,7 +226,7 @@ class TestHandleModelCallbackPersistence:
         ctx = MagicMock()
         ctx.user_data = {}
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await handle_model_callback(update, ctx)
 
         # No crash, user_data set

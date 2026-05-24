@@ -48,13 +48,13 @@ def _make_session(
 @pytest.fixture(autouse=True)
 def clear_session_pool():
     """Ensure a clean session pool before/after each test."""
-    import chati
+    import remoclaw
 
-    chati.runner._session_mgr._sessions.clear()
-    chati._thread_sessions.clear()
+    remoclaw.runner._session_mgr._sessions.clear()
+    remoclaw._thread_sessions.clear()
     yield
-    chati.runner._session_mgr._sessions.clear()
-    chati._thread_sessions.clear()
+    remoclaw.runner._session_mgr._sessions.clear()
+    remoclaw._thread_sessions.clear()
 
 
 # ─── cmd_sessions — no sessions branch ───────────────────────────────────────
@@ -67,13 +67,13 @@ class TestCmdSessionsEmpty:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """No sessions → friendly message with slot availability."""
-        from chati import cmd_sessions
+        from remoclaw import cmd_sessions
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/any")
         update = telegram_update_factory(text="/sessions")
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_sessions(update, mock_context)
 
         update.message.reply_text.assert_called_once()
@@ -87,14 +87,14 @@ class TestCmdSessionsEmpty:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """No-session branch must use HTML parse mode (consistent with /info)."""
-        from chati import cmd_sessions
+        from remoclaw import cmd_sessions
         from db import init_db
         from telegram.constants import ParseMode
 
         await init_db(temp_db_path, default_project_dir="/tmp/any")
         update = telegram_update_factory(text="/sessions")
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_sessions(update, mock_context)
 
         kwargs = update.message.reply_text.call_args.kwargs
@@ -111,8 +111,8 @@ class TestCmdSessionsList:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """One session → line with emoji, thread ID, project, provider, model."""
-        from chati import cmd_sessions
-        import chati
+        from remoclaw import cmd_sessions
+        import remoclaw
         import db as db_module
         from db import init_db
 
@@ -130,11 +130,11 @@ class TestCmdSessionsList:
             state=PtyState.STREAMING,
             created_at=time.monotonic() - 60,
         )
-        chati.runner._session_mgr._sessions[111] = session
-        chati._thread_sessions[111] = 3
+        remoclaw.runner._session_mgr._sessions[111] = session
+        remoclaw._thread_sessions[111] = 3
 
         update = telegram_update_factory(text="/sessions")
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_sessions(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -143,7 +143,7 @@ class TestCmdSessionsList:
         assert "proj-a" in reply         # project basename
         assert "sonnet" in reply         # model
         # Provider name (from runner.provider.name) shown
-        assert chati.runner.provider.name in reply or "📡" in reply
+        assert remoclaw.runner.provider.name in reply or "📡" in reply
         # Streaming emoji
         assert "🟢" in reply
         # Message count
@@ -153,8 +153,8 @@ class TestCmdSessionsList:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """Sessions in different states render with distinct status emojis and state text."""
-        from chati import cmd_sessions
-        import chati
+        from remoclaw import cmd_sessions
+        import remoclaw
         import db as db_module
         from db import init_db
 
@@ -166,18 +166,18 @@ class TestCmdSessionsList:
             )
 
         now = time.monotonic()
-        chati.runner._session_mgr._sessions[10] = _make_session(
+        remoclaw.runner._session_mgr._sessions[10] = _make_session(
             thread_id=10, state=PtyState.STREAMING, created_at=now - 15
         )
-        chati.runner._session_mgr._sessions[20] = _make_session(
+        remoclaw.runner._session_mgr._sessions[20] = _make_session(
             thread_id=20, state=PtyState.WAITING_FOR_USER, created_at=now - 120
         )
-        chati.runner._session_mgr._sessions[30] = _make_session(
+        remoclaw.runner._session_mgr._sessions[30] = _make_session(
             thread_id=30, state=PtyState.IDLE, created_at=now - 300
         )
 
         update = telegram_update_factory(text="/sessions")
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_sessions(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -200,18 +200,18 @@ class TestCmdSessionsList:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """Session with thread_id=None is labelled 'main'."""
-        from chati import cmd_sessions
-        import chati
+        from remoclaw import cmd_sessions
+        import remoclaw
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/main-dir")
 
-        chati.runner._session_mgr._sessions[None] = _make_session(
+        remoclaw.runner._session_mgr._sessions[None] = _make_session(
             thread_id=None, state=PtyState.IDLE
         )
 
         update = telegram_update_factory(text="/sessions")
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_sessions(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -221,19 +221,19 @@ class TestCmdSessionsList:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """Thread with no DB row → project column falls back (no crash)."""
-        from chati import cmd_sessions
-        import chati
+        from remoclaw import cmd_sessions
+        import remoclaw
         from db import init_db
 
         # Empty init — no default row, no per-thread row
         await init_db(temp_db_path, default_project_dir="")
 
-        chati.runner._session_mgr._sessions[9999] = _make_session(
+        remoclaw.runner._session_mgr._sessions[9999] = _make_session(
             thread_id=9999, state=PtyState.STREAMING
         )
 
         update = telegram_update_factory(text="/sessions")
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_sessions(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -251,30 +251,30 @@ class TestCmdSessionsPagination:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """11 sessions → first 10 listed + '... and 1 more' marker."""
-        from chati import cmd_sessions
-        import chati
+        from remoclaw import cmd_sessions
+        import remoclaw
         import db as db_module
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/root")
         # Bump max_sessions for this test (default is 5)
-        original_max = chati.runner._session_mgr._max_sessions
-        chati.runner._session_mgr._max_sessions = 20
+        original_max = remoclaw.runner._session_mgr._max_sessions
+        remoclaw.runner._session_mgr._max_sessions = 20
 
         try:
             for i in range(1, 12):  # threads 1..11
                 await db_module.upsert_thread_config(
                     i, project_dir=f"/tmp/p{i}", path=temp_db_path
                 )
-                chati.runner._session_mgr._sessions[i] = _make_session(
+                remoclaw.runner._session_mgr._sessions[i] = _make_session(
                     thread_id=i, state=PtyState.IDLE
                 )
 
             update = telegram_update_factory(text="/sessions")
-            with patch("chati.DB_PATH", temp_db_path):
+            with patch("remoclaw.DB_PATH", temp_db_path):
                 await cmd_sessions(update, mock_context)
         finally:
-            chati.runner._session_mgr._max_sessions = original_max
+            remoclaw.runner._session_mgr._max_sessions = original_max
 
         reply = update.message.reply_text.call_args[0][0]
         # Must include the "more" marker
@@ -290,29 +290,29 @@ class TestCmdSessionsPagination:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """Exactly 10 sessions → no pagination marker shown."""
-        from chati import cmd_sessions
-        import chati
+        from remoclaw import cmd_sessions
+        import remoclaw
         import db as db_module
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/root")
-        original_max = chati.runner._session_mgr._max_sessions
-        chati.runner._session_mgr._max_sessions = 20
+        original_max = remoclaw.runner._session_mgr._max_sessions
+        remoclaw.runner._session_mgr._max_sessions = 20
 
         try:
             for i in range(1, 11):  # 1..10
                 await db_module.upsert_thread_config(
                     i, project_dir=f"/tmp/p{i}", path=temp_db_path
                 )
-                chati.runner._session_mgr._sessions[i] = _make_session(
+                remoclaw.runner._session_mgr._sessions[i] = _make_session(
                     thread_id=i, state=PtyState.IDLE
                 )
 
             update = telegram_update_factory(text="/sessions")
-            with patch("chati.DB_PATH", temp_db_path):
+            with patch("remoclaw.DB_PATH", temp_db_path):
                 await cmd_sessions(update, mock_context)
         finally:
-            chati.runner._session_mgr._max_sessions = original_max
+            remoclaw.runner._session_mgr._max_sessions = original_max
 
         reply = update.message.reply_text.call_args[0][0]
         # All 10 projects shown
@@ -332,32 +332,32 @@ class TestCmdSessionsReadOnly:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """States must be unchanged after /sessions runs."""
-        from chati import cmd_sessions
-        import chati
+        from remoclaw import cmd_sessions
+        import remoclaw
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/ro")
-        chati.runner._session_mgr._sessions[1] = _make_session(
+        remoclaw.runner._session_mgr._sessions[1] = _make_session(
             thread_id=1, state=PtyState.WAITING_FOR_USER
         )
-        chati.runner._session_mgr._sessions[2] = _make_session(
+        remoclaw.runner._session_mgr._sessions[2] = _make_session(
             thread_id=2, state=PtyState.STREAMING
         )
 
         update = telegram_update_factory(text="/sessions")
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_sessions(update, mock_context)
 
         # States unchanged
-        assert chati.runner._session_mgr._sessions[1].state == PtyState.WAITING_FOR_USER
-        assert chati.runner._session_mgr._sessions[2].state == PtyState.STREAMING
+        assert remoclaw.runner._session_mgr._sessions[1].state == PtyState.WAITING_FOR_USER
+        assert remoclaw.runner._session_mgr._sessions[2].state == PtyState.STREAMING
 
     async def test_dead_sessions_excluded_from_list(
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """DEAD sessions are filtered out — only live sessions shown."""
-        from chati import cmd_sessions
-        import chati
+        from remoclaw import cmd_sessions
+        import remoclaw
         import db as db_module
         from db import init_db
 
@@ -369,15 +369,15 @@ class TestCmdSessionsReadOnly:
             51, project_dir="/tmp/dead-proj", path=temp_db_path
         )
 
-        chati.runner._session_mgr._sessions[50] = _make_session(
+        remoclaw.runner._session_mgr._sessions[50] = _make_session(
             thread_id=50, state=PtyState.STREAMING
         )
-        chati.runner._session_mgr._sessions[51] = _make_session(
+        remoclaw.runner._session_mgr._sessions[51] = _make_session(
             thread_id=51, state=PtyState.DEAD
         )
 
         update = telegram_update_factory(text="/sessions")
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_sessions(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -389,17 +389,17 @@ class TestCmdSessionsReadOnly:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """If all sessions are DEAD, show 'No active sessions' branch."""
-        from chati import cmd_sessions
-        import chati
+        from remoclaw import cmd_sessions
+        import remoclaw
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/root")
-        chati.runner._session_mgr._sessions[60] = _make_session(
+        remoclaw.runner._session_mgr._sessions[60] = _make_session(
             thread_id=60, state=PtyState.DEAD
         )
 
         update = telegram_update_factory(text="/sessions")
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_sessions(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -409,20 +409,20 @@ class TestCmdSessionsReadOnly:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """Model fallback is 'default', not context.user_data (per-user global)."""
-        from chati import cmd_sessions
-        import chati
+        from remoclaw import cmd_sessions
+        import remoclaw
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/model-test")
         # Set user_data model to something specific — should NOT appear
         mock_context.user_data["model"] = "opus"
 
-        chati.runner._session_mgr._sessions[70] = _make_session(
+        remoclaw.runner._session_mgr._sessions[70] = _make_session(
             thread_id=70, state=PtyState.IDLE
         )
 
         update = telegram_update_factory(text="/sessions")
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_sessions(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -432,11 +432,11 @@ class TestCmdSessionsReadOnly:
 
     async def test_handler_registered_in_main(self):
         """cmd_sessions must be wired as a CommandHandler named 'sessions'."""
-        import chati
+        import remoclaw
         import inspect
 
         # Look for the string literal 'sessions' in main()'s source, as a
         # lightweight smoke test that the handler is registered.
-        src = inspect.getsource(chati.main)
+        src = inspect.getsource(remoclaw.main)
         assert 'CommandHandler("sessions"' in src
         assert "cmd_sessions" in src

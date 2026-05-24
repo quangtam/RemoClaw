@@ -144,7 +144,7 @@ class TestVoiceOutputPersistence:
     async def test_resolve_voice_output_from_sqlite(self, temp_db_path):
         """_resolve_voice_output reads from SQLite when row exists."""
         import db as db_module
-        import chati
+        import remoclaw
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
         await db_module.upsert_thread_config(
@@ -152,33 +152,33 @@ class TestVoiceOutputPersistence:
         )
         await db_module.upsert_voice_output(42, voice_output=True, path=temp_db_path)
 
-        with patch("chati.DB_PATH", temp_db_path):
-            result = await chati._resolve_voice_output(42)
+        with patch("remoclaw.DB_PATH", temp_db_path):
+            result = await remoclaw._resolve_voice_output(42)
 
         assert result is True
 
     async def test_resolve_voice_output_falls_back_to_global(self, temp_db_path):
         """_resolve_voice_output falls back to config when no SQLite override."""
         import db as db_module
-        import chati
+        import remoclaw
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
 
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_output_enabled", True):
-            result = await chati._resolve_voice_output(99)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_output_enabled", True):
+            result = await remoclaw._resolve_voice_output(99)
 
         assert result is True
 
     async def test_is_voice_output_enabled_uses_cache(self, temp_db_path):
         """_is_voice_output_enabled uses in-memory cache on second call."""
-        import chati
+        import remoclaw
 
         ctx = MagicMock()
         ctx.bot_data = {"thread:42:voice_output": True}
 
         # Cache hit — should not touch SQLite
-        result = await chati._is_voice_output_enabled(42, ctx)
+        result = await remoclaw._is_voice_output_enabled(42, ctx)
         assert result is True
 
     async def test_is_voice_output_enabled_populates_cache_on_miss(
@@ -186,7 +186,7 @@ class TestVoiceOutputPersistence:
     ):
         """_is_voice_output_enabled populates cache on SQLite lookup."""
         import db as db_module
-        import chati
+        import remoclaw
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
         await db_module.upsert_thread_config(
@@ -198,8 +198,8 @@ class TestVoiceOutputPersistence:
         ctx = MagicMock()
         ctx.bot_data = bot_data
 
-        with patch("chati.DB_PATH", temp_db_path):
-            result = await chati._is_voice_output_enabled(42, ctx)
+        with patch("remoclaw.DB_PATH", temp_db_path):
+            result = await remoclaw._is_voice_output_enabled(42, ctx)
 
         assert result is False
         # Cache should now be populated
@@ -208,7 +208,7 @@ class TestVoiceOutputPersistence:
     async def test_per_thread_sqlite_overrides_global_config(self, temp_db_path):
         """Per-thread SQLite value takes precedence over global config default."""
         import db as db_module
-        import chati
+        import remoclaw
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
         await db_module.upsert_thread_config(
@@ -217,16 +217,16 @@ class TestVoiceOutputPersistence:
         # SQLite says enabled, global config says disabled
         await db_module.upsert_voice_output(42, voice_output=True, path=temp_db_path)
 
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_output_enabled", False):
-            result = await chati._resolve_voice_output(42)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_output_enabled", False):
+            result = await remoclaw._resolve_voice_output(42)
 
         assert result is True  # SQLite wins
 
     async def test_null_voice_output_falls_back_to_global(self, temp_db_path):
         """Thread with NULL voice_output falls back to global config."""
         import db as db_module
-        import chati
+        import remoclaw
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
         await db_module.upsert_thread_config(
@@ -234,23 +234,23 @@ class TestVoiceOutputPersistence:
         )
         # voice_output is NULL (not set)
 
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_output_enabled", True):
-            result = await chati._resolve_voice_output(42)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_output_enabled", True):
+            result = await remoclaw._resolve_voice_output(42)
 
         assert result is True  # Falls back to global
 
     async def test_new_thread_no_row_falls_back_to_global(self, temp_db_path):
         """New thread (no SQLite row) falls back to global config."""
         import db as db_module
-        import chati
+        import remoclaw
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
         # No row for thread 999
 
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_output_enabled", False):
-            result = await chati._resolve_voice_output(999)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_output_enabled", False):
+            result = await remoclaw._resolve_voice_output(999)
 
         assert result is False
 
@@ -330,7 +330,7 @@ class TestVoiceStatusSubcommand:
         self, telegram_update_factory, temp_db_path
     ):
         """'/voice status' shows whisper model, TTS model, TTS voice."""
-        import chati
+        import remoclaw
         import db as db_module
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
@@ -338,13 +338,13 @@ class TestVoiceStatusSubcommand:
         update = telegram_update_factory(text="/voice status")
         ctx = self._make_context()
 
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_enabled", True), \
-             patch.object(chati.config, "whisper_model", "gpt-4o-mini-transcribe"), \
-             patch.object(chati.config, "tts_model", "gpt-4o-mini-tts"), \
-             patch.object(chati.config, "tts_voice", "coral"), \
-             patch.object(chati.config, "voice_output_enabled", False):
-            await chati.cmd_voice(update, ctx)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_enabled", True), \
+             patch.object(remoclaw.config, "whisper_model", "gpt-4o-mini-transcribe"), \
+             patch.object(remoclaw.config, "tts_model", "gpt-4o-mini-tts"), \
+             patch.object(remoclaw.config, "tts_voice", "coral"), \
+             patch.object(remoclaw.config, "voice_output_enabled", False):
+            await remoclaw.cmd_voice(update, ctx)
 
         reply = update.message.reply_text.call_args.args[0]
         assert "gpt-4o-mini-transcribe" in reply
@@ -355,7 +355,7 @@ class TestVoiceStatusSubcommand:
         self, telegram_update_factory, temp_db_path
     ):
         """'/voice status' shows 'global default' when no per-thread override."""
-        import chati
+        import remoclaw
         import db as db_module
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
@@ -363,13 +363,13 @@ class TestVoiceStatusSubcommand:
         update = telegram_update_factory(text="/voice status")
         ctx = self._make_context()
 
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_enabled", True), \
-             patch.object(chati.config, "whisper_model", "gpt-4o-mini-transcribe"), \
-             patch.object(chati.config, "tts_model", "gpt-4o-mini-tts"), \
-             patch.object(chati.config, "tts_voice", "coral"), \
-             patch.object(chati.config, "voice_output_enabled", False):
-            await chati.cmd_voice(update, ctx)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_enabled", True), \
+             patch.object(remoclaw.config, "whisper_model", "gpt-4o-mini-transcribe"), \
+             patch.object(remoclaw.config, "tts_model", "gpt-4o-mini-tts"), \
+             patch.object(remoclaw.config, "tts_voice", "coral"), \
+             patch.object(remoclaw.config, "voice_output_enabled", False):
+            await remoclaw.cmd_voice(update, ctx)
 
         reply = update.message.reply_text.call_args.args[0]
         assert "global default" in reply
@@ -378,7 +378,7 @@ class TestVoiceStatusSubcommand:
         self, telegram_update_factory, temp_db_path
     ):
         """'/voice status' shows 'per-thread (SQLite)' when override exists."""
-        import chati
+        import remoclaw
         import db as db_module
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
@@ -390,13 +390,13 @@ class TestVoiceStatusSubcommand:
         update = telegram_update_factory(text="/voice status", message_thread_id=42)
         ctx = self._make_context()
 
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_enabled", True), \
-             patch.object(chati.config, "whisper_model", "gpt-4o-mini-transcribe"), \
-             patch.object(chati.config, "tts_model", "gpt-4o-mini-tts"), \
-             patch.object(chati.config, "tts_voice", "coral"), \
-             patch.object(chati.config, "voice_output_enabled", False):
-            await chati.cmd_voice(update, ctx)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_enabled", True), \
+             patch.object(remoclaw.config, "whisper_model", "gpt-4o-mini-transcribe"), \
+             patch.object(remoclaw.config, "tts_model", "gpt-4o-mini-tts"), \
+             patch.object(remoclaw.config, "tts_voice", "coral"), \
+             patch.object(remoclaw.config, "voice_output_enabled", False):
+            await remoclaw.cmd_voice(update, ctx)
 
         reply = update.message.reply_text.call_args.args[0]
         assert "per-thread" in reply
@@ -405,7 +405,7 @@ class TestVoiceStatusSubcommand:
         self, telegram_update_factory, temp_db_path
     ):
         """'/voice status' still shows config even when voice is disabled."""
-        import chati
+        import remoclaw
         import db as db_module
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
@@ -414,8 +414,8 @@ class TestVoiceStatusSubcommand:
         ctx = self._make_context()
 
         # voice_enabled = False → should show "not configured" message
-        with patch.object(chati.config, "voice_enabled", False):
-            await chati.cmd_voice(update, ctx)
+        with patch.object(remoclaw.config, "voice_enabled", False):
+            await remoclaw.cmd_voice(update, ctx)
 
         reply = update.message.reply_text.call_args.args[0]
         assert "not configured" in reply.lower() or "Voice features" in reply
@@ -431,7 +431,7 @@ class TestVoiceTogglePersistence:
         self, telegram_update_factory, temp_db_path
     ):
         """Toggling /voice writes the new state to SQLite."""
-        import chati
+        import remoclaw
         import db as db_module
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
@@ -444,10 +444,10 @@ class TestVoiceTogglePersistence:
         ctx.bot_data = {}
         ctx.args = []
 
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_enabled", True), \
-             patch.object(chati.config, "voice_output_enabled", False):
-            await chati.cmd_voice(update, ctx)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_enabled", True), \
+             patch.object(remoclaw.config, "voice_output_enabled", False):
+            await remoclaw.cmd_voice(update, ctx)
 
         # Verify SQLite was updated
         tc = await db_module.get_thread_config(42, path=temp_db_path)
@@ -458,7 +458,7 @@ class TestVoiceTogglePersistence:
         self, telegram_update_factory, temp_db_path
     ):
         """Toggling /voice also updates context.bot_data cache immediately."""
-        import chati
+        import remoclaw
         import db as db_module
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
@@ -471,10 +471,10 @@ class TestVoiceTogglePersistence:
         ctx.bot_data = {}
         ctx.args = []
 
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_enabled", True), \
-             patch.object(chati.config, "voice_output_enabled", False):
-            await chati.cmd_voice(update, ctx)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_enabled", True), \
+             patch.object(remoclaw.config, "voice_output_enabled", False):
+            await remoclaw.cmd_voice(update, ctx)
 
         assert ctx.bot_data.get("thread:42:voice_output") is True
 
@@ -482,7 +482,7 @@ class TestVoiceTogglePersistence:
         self, telegram_update_factory, temp_db_path
     ):
         """Toggle confirmation message mentions persistence (Story 6.3)."""
-        import chati
+        import remoclaw
         import db as db_module
 
         await db_module.init_db(temp_db_path, default_project_dir="/tmp/proj")
@@ -495,10 +495,10 @@ class TestVoiceTogglePersistence:
         ctx.bot_data = {}
         ctx.args = []
 
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.config, "voice_enabled", True), \
-             patch.object(chati.config, "voice_output_enabled", False):
-            await chati.cmd_voice(update, ctx)
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.config, "voice_enabled", True), \
+             patch.object(remoclaw.config, "voice_output_enabled", False):
+            await remoclaw.cmd_voice(update, ctx)
 
         reply = update.message.reply_text.call_args.args[0]
         assert "persist" in reply.lower() or "survives" in reply.lower()
@@ -582,11 +582,11 @@ class TestGracefulDegradation:
         with patch.dict("sys.modules", {"voice": None}):
             # The module-level initialization in chati.py already ran at import time.
             # We test the pattern: if import fails, services are None.
-            import chati
+            import remoclaw
 
             # Verify the pattern: if voice services are None, voice handlers degrade
-            original_transcriber = chati.voice_transcriber
-            chati.voice_transcriber = None
+            original_transcriber = remoclaw.voice_transcriber
+            remoclaw.voice_transcriber = None
             try:
                 # handle_voice_message should respond with "not configured"
                 from unittest.mock import MagicMock, AsyncMock
@@ -601,19 +601,19 @@ class TestGracefulDegradation:
                 ctx = MagicMock()
                 ctx.bot_data = {}
 
-                with patch.object(chati.config, "voice_enabled", True):
-                    await chati.handle_voice_message(update, ctx)
+                with patch.object(remoclaw.config, "voice_enabled", True):
+                    await remoclaw.handle_voice_message(update, ctx)
 
                 reply = update.message.reply_text.call_args.args[0]
                 assert "not configured" in reply.lower() or "type your message" in reply.lower()
             finally:
-                chati.voice_transcriber = original_transcriber
+                remoclaw.voice_transcriber = original_transcriber
 
     async def test_voice_disabled_cmd_voice_shows_not_configured(
         self, telegram_update_factory
     ):
         """When voice_enabled is False, /voice shows 'not configured' message."""
-        import chati
+        import remoclaw
         from unittest.mock import patch, MagicMock
 
         update = telegram_update_factory(text="/voice")
@@ -621,22 +621,22 @@ class TestGracefulDegradation:
         ctx.bot_data = {}
         ctx.args = []
 
-        with patch.object(chati.config, "voice_enabled", False):
-            await chati.cmd_voice(update, ctx)
+        with patch.object(remoclaw.config, "voice_enabled", False):
+            await remoclaw.cmd_voice(update, ctx)
 
         reply = update.message.reply_text.call_args.args[0]
         assert "not configured" in reply.lower() or "Voice features" in reply
 
     async def test_voice_synthesizer_none_skips_tts(self, telegram_update_factory):
         """When voice_synthesizer is None, TTS is silently skipped (no crash)."""
-        import chati
+        import remoclaw
 
         # voice_synthesizer = None means TTS is disabled
-        original = chati.voice_synthesizer
-        chati.voice_synthesizer = None
+        original = remoclaw.voice_synthesizer
+        remoclaw.voice_synthesizer = None
         try:
             # The condition `if voice_synthesizer and ...` should short-circuit
-            assert chati.voice_synthesizer is None
+            assert remoclaw.voice_synthesizer is None
             # No crash — this is the graceful no-op pattern
         finally:
-            chati.voice_synthesizer = original
+            remoclaw.voice_synthesizer = original

@@ -1,13 +1,18 @@
 .env
 __pycache__/
 *.pyc
+remoclaw.log
 chati.log
 bot.log
+.remoclaw.pid
 .chati.pid
 .bot.pid
 .venv/
 
 # Runtime artifacts
+remoclaw.db
+remoclaw.db-shm
+remoclaw.db-wal
 chati.db
 chati.db-shm
 chati.db-wal

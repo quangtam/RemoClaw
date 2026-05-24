@@ -1,8 +1,8 @@
-# Chati — Deployment Guide
+# RemoClaw — Deployment Guide
 
 ## Overview
 
-Chati is designed as a **long-running process on a single trusted machine**. There's no server component, no database, no external service dependencies beyond:
+RemoClaw is designed as a **long-running process on a single trusted machine**. There's no server component, no database, no external service dependencies beyond:
 
 - Telegram Bot API (outbound HTTPS)
 - One AI CLI binary (local subprocess)
@@ -13,7 +13,7 @@ Chati is designed as a **long-running process on a single trusted machine**. The
 
 **Best for**: Individual use, development, testing.
 
-- Run `./chati start` when needed
+- Run `./remoclaw start` when needed
 - Optionally add to shell profile as alias
 - No public IP or firewall changes needed
 
@@ -30,7 +30,7 @@ Chati is designed as a **long-running process on a single trusted machine**. The
 **Best for**: Team use, remote-only setup.
 
 - Reliable uptime
-- Fixed IP for webhook (not needed — Chati uses polling)
+- Fixed IP for webhook (not needed — RemoClaw uses polling)
 - Moderate cost (~$5-10/month for smallest tier)
 
 ### 4. Docker container (recommended for teams)
@@ -46,15 +46,15 @@ See [Docker](#docker-deployment) section below.
 3. **Telegram Bot token** from @BotFather
 4. **Outbound HTTPS** access to `api.telegram.org`
 5. **Whitelisted user IDs** in `ALLOWED_USER_IDS`
-6. **Trusted filesystem** — Chati can read/write/execute in `PROJECT_DIR`
+6. **Trusted filesystem** — RemoClaw can read/write/execute in `PROJECT_DIR`
 
 ## Systemd Service (Linux)
 
-Create `/etc/systemd/system/chati.service`:
+Create `/etc/systemd/system/remoclaw.service`:
 
 ```ini
 [Unit]
-Description=Chati — AI CLI Telegram bridge
+Description=RemoClaw — AI CLI Telegram bridge
 After=network-online.target
 Wants=network-online.target
 
@@ -62,12 +62,12 @@ Wants=network-online.target
 Type=simple
 User=tony
 Group=tony
-WorkingDirectory=/home/tony/chati
-ExecStart=/home/tony/chati/.venv/bin/python /home/tony/chati/chati.py
+WorkingDirectory=/home/tony/remoclaw
+ExecStart=/home/tony/remoclaw/.venv/bin/python /home/tony/remoclaw/remoclaw.py
 Restart=on-failure
 RestartSec=10
-StandardOutput=append:/home/tony/chati/chati.log
-StandardError=append:/home/tony/chati/chati.log
+StandardOutput=append:/home/tony/remoclaw/remoclaw.log
+StandardError=append:/home/tony/remoclaw/remoclaw.log
 
 # Security hardening
 NoNewPrivileges=true
@@ -81,24 +81,24 @@ Enable and start:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable chati
-sudo systemctl start chati
-sudo systemctl status chati
+sudo systemctl enable remoclaw
+sudo systemctl start remoclaw
+sudo systemctl status remoclaw
 ```
 
 View logs:
 
 ```bash
-journalctl -u chati -f
+journalctl -u remoclaw -f
 # or
-tail -f /home/tony/chati/chati.log
+tail -f /home/tony/remoclaw/remoclaw.log
 ```
 
 ## Docker Deployment
 
 ### Dockerfile
 
-Chati doesn't ship a Dockerfile yet. Here's a reference example:
+RemoClaw doesn't ship a Dockerfile yet. Here's a reference example:
 
 ```dockerfile
 FROM python:3.12-slim
@@ -119,10 +119,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Run as non-root
-RUN useradd -u 1000 -m chati && chown -R chati:chati /app
-USER chati
+RUN useradd -u 1000 -m remoclaw && chown -R remoclaw:remoclaw /app
+USER remoclaw
 
-CMD ["python", "chati.py"]
+CMD ["python", "remoclaw.py"]
 ```
 
 ### Challenges with Docker
@@ -137,11 +137,11 @@ Example `docker-compose.yml`:
 
 ```yaml
 services:
-  chati:
+  remoclaw:
     build: .
     volumes:
       - ./your-project:/workspace
-      - ~/.config/kiro:/home/chati/.config/kiro  # Persist CLI auth
+      - ~/.config/kiro:/home/remoclaw/.config/kiro  # Persist CLI auth
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
@@ -152,7 +152,7 @@ services:
 
 ## Resource Requirements
 
-Chati itself is lightweight. The AI CLI subprocesses consume most resources.
+RemoClaw itself is lightweight. The AI CLI subprocesses consume most resources.
 
 | Resource | Idle (bot only) | With active CLI session |
 | -------- | --------------- | ----------------------- |
@@ -196,7 +196,7 @@ For higher security, set `CLI_TRUST_ALL_TOOLS=false` and the CLI will prompt for
 
 ### 4. Network isolation
 
-Chati only needs outbound HTTPS to:
+RemoClaw only needs outbound HTTPS to:
 
 - `api.telegram.org` (Telegram Bot API)
 - CLI-specific endpoints (e.g., `api.anthropic.com`, `generativelanguage.googleapis.com`)
@@ -205,10 +205,10 @@ Block all other outbound if using a firewall.
 
 ### 5. Logs may contain sensitive data
 
-`chati.log` includes prompts and AI responses. Protect the log file:
+`remoclaw.log` includes prompts and AI responses. Protect the log file:
 
 ```bash
-chmod 600 chati.log
+chmod 600 remoclaw.log
 ```
 
 ## Monitoring
@@ -218,7 +218,7 @@ chmod 600 chati.log
 A simple health check — bot is alive if it's polling:
 
 ```bash
-./chati status
+./remoclaw status
 ```
 
 Exit code 0 if running, 1 otherwise. Usable in monitoring scripts.
@@ -239,16 +239,16 @@ Watch for these patterns:
 ## Updates
 
 ```bash
-cd chati
+cd remoclaw
 git pull
-./chati restart
+./remoclaw restart
 ```
 
 If `requirements.txt` changed:
 
 ```bash
 .venv/bin/pip install -r requirements.txt
-./chati restart
+./remoclaw restart
 ```
 
 ## Rollback
@@ -256,7 +256,7 @@ If `requirements.txt` changed:
 ```bash
 git log --oneline
 git checkout <previous-tag>
-./chati restart
+./remoclaw restart
 ```
 
 ## Backup
@@ -283,12 +283,12 @@ Before going live:
 
 ## Log Rotation
 
-`chati.log` grows unbounded. Configure rotation:
+`remoclaw.log` grows unbounded. Configure rotation:
 
-**Systemd + logrotate** (`/etc/logrotate.d/chati`):
+**Systemd + logrotate** (`/etc/logrotate.d/remoclaw`):
 
 ```text
-/home/tony/chati/chati.log {
+/home/tony/remoclaw/remoclaw.log {
     daily
     rotate 7
     compress
@@ -301,28 +301,28 @@ Before going live:
 **Manual rotation**:
 
 ```bash
-mv chati.log chati.log.old
-./chati restart
+mv remoclaw.log remoclaw.log.old
+./remoclaw restart
 ```
 
 ## Troubleshooting Production Issues
 
 ### Bot stops responding
 
-1. Check process: `./chati status`
-2. Check logs: `tail -100 chati.log`
+1. Check process: `./remoclaw status`
+2. Check logs: `tail -100 remoclaw.log`
 3. Check Telegram API: `curl https://api.telegram.org/bot<TOKEN>/getMe`
 4. Check CLI: `kiro-cli whoami` (or equivalent)
-5. Last resort: `./chati restart`
+5. Last resort: `./remoclaw restart`
 
 ### High memory usage
 
 Long-running PTY sessions accumulate context. Mitigations:
 
-- Periodic `./chati restart` (daily cron)
+- Periodic `./remoclaw restart` (daily cron)
 - Users send `/new` more often to reset sessions
 - Decrease `CLI_TIMEOUT` to kill long-running processes sooner
 
 ### Rate limiting from Telegram
 
-If you hit 30 edits/min/chat limit, increase `_STREAM_UPDATE_INTERVAL` in `chati.py` (default 1.5s). Tradeoff: less responsive streaming.
+If you hit 30 edits/min/chat limit, increase `_STREAM_UPDATE_INTERVAL` in `remoclaw.py` (default 1.5s). Tradeoff: less responsive streaming.

@@ -22,7 +22,7 @@ class TestCmdProjects:
     async def test_empty_list_shows_hint(
         self, telegram_update_factory, temp_db_path
     ):
-        from chati import cmd_projects
+        from remoclaw import cmd_projects
 
         # Fresh DB with no projects at all — don't call init_db
         # Create schema manually to avoid default row
@@ -41,7 +41,7 @@ class TestCmdProjects:
         update = telegram_update_factory(text="/projects")
         ctx = _make_context()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_projects(update, ctx)
 
         update.message.reply_text.assert_called_once()
@@ -51,7 +51,7 @@ class TestCmdProjects:
     async def test_shows_inline_keyboard_with_projects(
         self, telegram_update_factory, temp_db_path
     ):
-        from chati import cmd_projects
+        from remoclaw import cmd_projects
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
         await upsert_thread_config(1, project_dir="/proj/a", path=temp_db_path)
@@ -60,7 +60,7 @@ class TestCmdProjects:
         update = telegram_update_factory(text="/projects")
         ctx = _make_context()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_projects(update, ctx)
 
         # chat_data should store the list
@@ -79,7 +79,7 @@ class TestCmdProjects:
     async def test_marks_current_thread_binding(
         self, telegram_update_factory, temp_db_path
     ):
-        from chati import cmd_projects
+        from remoclaw import cmd_projects
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
         await upsert_thread_config(1, project_dir="/proj/a", path=temp_db_path)
@@ -89,7 +89,7 @@ class TestCmdProjects:
         update = telegram_update_factory(text="/projects")
         ctx = _make_context()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_projects(update, ctx)
 
         kwargs = update.message.reply_text.call_args.kwargs
@@ -101,7 +101,7 @@ class TestCmdProjects:
     async def test_long_paths_truncated_in_display(
         self, telegram_update_factory, temp_db_path
     ):
-        from chati import cmd_projects
+        from remoclaw import cmd_projects
 
         long_path = "/very/long/path/that/exceeds/sixty/characters/for/testing/display/truncation/here"
         await init_db(temp_db_path, default_project_dir="/tmp/default")
@@ -110,7 +110,7 @@ class TestCmdProjects:
         update = telegram_update_factory(text="/projects")
         ctx = _make_context()
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await cmd_projects(update, ctx)
 
         kwargs = update.message.reply_text.call_args.kwargs
@@ -131,7 +131,7 @@ class TestHandleProjectsCallback:
     async def test_valid_selection_binds_thread(
         self, telegram_update_factory, temp_db_path
     ):
-        from chati import handle_projects_callback
+        from remoclaw import handle_projects_callback
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
 
@@ -151,7 +151,7 @@ class TestHandleProjectsCallback:
         ctx = MagicMock()
         ctx.chat_data = {"_projects_list": ["/proj/a", "/proj/b", "/proj/c"]}
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await handle_projects_callback(update, ctx)
 
         # Should have bound default thread to /proj/b (index 1)
@@ -166,7 +166,7 @@ class TestHandleProjectsCallback:
     async def test_invalid_index_shows_error(
         self, telegram_update_factory, temp_db_path
     ):
-        from chati import handle_projects_callback
+        from remoclaw import handle_projects_callback
 
         await init_db(temp_db_path, default_project_dir="/tmp/default")
 
@@ -186,7 +186,7 @@ class TestHandleProjectsCallback:
         ctx = MagicMock()
         ctx.chat_data = {"_projects_list": ["/proj/a"]}  # only 1 item
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await handle_projects_callback(update, ctx)
 
         reply = update.callback_query.edit_message_text.call_args[0][0]
@@ -195,7 +195,7 @@ class TestHandleProjectsCallback:
     async def test_missing_chat_data_shows_error(
         self, telegram_update_factory, temp_db_path
     ):
-        from chati import handle_projects_callback
+        from remoclaw import handle_projects_callback
 
         update = MagicMock()
         update.callback_query = MagicMock()
@@ -213,7 +213,7 @@ class TestHandleProjectsCallback:
         ctx = MagicMock()
         ctx.chat_data = {}  # no _projects_list
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await handle_projects_callback(update, ctx)
 
         reply = update.callback_query.edit_message_text.call_args[0][0]
@@ -222,7 +222,7 @@ class TestHandleProjectsCallback:
     async def test_malformed_callback_data(
         self, telegram_update_factory, temp_db_path
     ):
-        from chati import handle_projects_callback
+        from remoclaw import handle_projects_callback
 
         update = MagicMock()
         update.callback_query = MagicMock()
@@ -240,7 +240,7 @@ class TestHandleProjectsCallback:
         ctx = MagicMock()
         ctx.chat_data = {"_projects_list": ["/proj/a"]}
 
-        with patch("chati.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path):
             await handle_projects_callback(update, ctx)
 
         reply = update.callback_query.edit_message_text.call_args[0][0]

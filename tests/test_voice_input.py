@@ -113,13 +113,13 @@ class TestHandleVoiceMessage:
 
     async def test_voice_disabled_sends_fallback_message(self, telegram_update_factory):
         """When voice_enabled=False, handler sends the 'not configured' message."""
-        import chati
+        import remoclaw
 
         update = _make_voice_update(telegram_update_factory)
         ctx = _make_context()
 
-        with patch.object(chati.config, "voice_enabled", False, create=True):
-            await chati.handle_voice_message(update, ctx)
+        with patch.object(remoclaw.config, "voice_enabled", False, create=True):
+            await remoclaw.handle_voice_message(update, ctx)
 
         update.message.reply_text.assert_awaited_once()
         (args, _) = update.message.reply_text.call_args
@@ -129,7 +129,7 @@ class TestHandleVoiceMessage:
         self, telegram_update_factory
     ):
         """On successful transcription with auto_send=False, handler shows the confirm keyboard."""
-        import chati
+        import remoclaw
 
         update = _make_voice_update(telegram_update_factory, thread_id=42)
         ctx = _make_context()
@@ -141,10 +141,10 @@ class TestHandleVoiceMessage:
         transcriber = MagicMock()
         transcriber.transcribe = AsyncMock(return_value="hello world")
 
-        with patch.object(chati.config, "voice_enabled", True, create=True), \
-             patch.object(chati.config, "voice_auto_send", False, create=True), \
-             patch.object(chati, "voice_transcriber", transcriber, create=True):
-            await chati.handle_voice_message(update, ctx)
+        with patch.object(remoclaw.config, "voice_enabled", True, create=True), \
+             patch.object(remoclaw.config, "voice_auto_send", False, create=True), \
+             patch.object(remoclaw, "voice_transcriber", transcriber, create=True):
+            await remoclaw.handle_voice_message(update, ctx)
 
         # The reply_text call should include the transcribed text
         update.message.reply_text.assert_awaited()
@@ -160,7 +160,7 @@ class TestHandleVoiceMessage:
         self, telegram_update_factory, monkeypatch
     ):
         """On successful transcription with auto_send=True, handler forwards immediately."""
-        import chati
+        import remoclaw
 
         update = _make_voice_update(telegram_update_factory, thread_id=42)
         ctx = _make_context()
@@ -177,12 +177,12 @@ class TestHandleVoiceMessage:
         async def fake_execute(upd, c, prompt):
             captured["prompt"] = prompt
 
-        monkeypatch.setattr(chati, "_execute_and_reply", fake_execute)
+        monkeypatch.setattr(remoclaw, "_execute_and_reply", fake_execute)
 
-        with patch.object(chati.config, "voice_enabled", True, create=True), \
-             patch.object(chati.config, "voice_auto_send", True, create=True), \
-             patch.object(chati, "voice_transcriber", transcriber, create=True):
-            await chati.handle_voice_message(update, ctx)
+        with patch.object(remoclaw.config, "voice_enabled", True, create=True), \
+             patch.object(remoclaw.config, "voice_auto_send", True, create=True), \
+             patch.object(remoclaw, "voice_transcriber", transcriber, create=True):
+            await remoclaw.handle_voice_message(update, ctx)
 
         # Should have forwarded directly without keyboard
         assert captured.get("prompt") == "hello world"
@@ -191,7 +191,7 @@ class TestHandleVoiceMessage:
 
     async def test_transcription_failure_sends_error(self, telegram_update_factory):
         """When transcription returns None, handler sends the error message."""
-        import chati
+        import remoclaw
 
         update = _make_voice_update(telegram_update_factory)
         ctx = _make_context()
@@ -203,10 +203,10 @@ class TestHandleVoiceMessage:
         transcriber = MagicMock()
         transcriber.transcribe = AsyncMock(return_value=None)
 
-        with patch.object(chati.config, "voice_enabled", True, create=True), patch.object(
-            chati, "voice_transcriber", transcriber, create=True
+        with patch.object(remoclaw.config, "voice_enabled", True, create=True), patch.object(
+            remoclaw, "voice_transcriber", transcriber, create=True
         ):
-            await chati.handle_voice_message(update, ctx)
+            await remoclaw.handle_voice_message(update, ctx)
 
         update.message.reply_text.assert_awaited()
         last_call = update.message.reply_text.call_args
@@ -214,7 +214,7 @@ class TestHandleVoiceMessage:
 
     async def test_temp_file_is_cleaned_up(self, telegram_update_factory):
         """The downloaded temp file must be deleted after processing."""
-        import chati
+        import remoclaw
 
         update = _make_voice_update(telegram_update_factory)
         ctx = _make_context()
@@ -235,10 +235,10 @@ class TestHandleVoiceMessage:
         transcriber = MagicMock()
         transcriber.transcribe = AsyncMock(return_value="x")
 
-        with patch.object(chati.config, "voice_enabled", True, create=True), patch.object(
-            chati, "voice_transcriber", transcriber, create=True
-        ):
-            await chati.handle_voice_message(update, ctx)
+        with patch.object(remoclaw.config, "voice_enabled", True, create=True), \
+             patch.object(remoclaw.config, "voice_auto_send", False, create=True), \
+             patch.object(remoclaw, "voice_transcriber", transcriber, create=True):
+            await remoclaw.handle_voice_message(update, ctx)
 
         assert "path" in captured_path
         assert not os.path.exists(captured_path["path"])  # cleaned up
@@ -247,7 +247,7 @@ class TestHandleVoiceMessage:
         self, telegram_update_factory
     ):
         """Temp file cleanup must happen even when transcription fails."""
-        import chati
+        import remoclaw
 
         update = _make_voice_update(telegram_update_factory)
         ctx = _make_context()
@@ -266,11 +266,11 @@ class TestHandleVoiceMessage:
         transcriber = MagicMock()
         transcriber.transcribe = AsyncMock(side_effect=RuntimeError("whisper down"))
 
-        with patch.object(chati.config, "voice_enabled", True, create=True), patch.object(
-            chati, "voice_transcriber", transcriber, create=True
-        ):
+        with patch.object(remoclaw.config, "voice_enabled", True, create=True), \
+             patch.object(remoclaw.config, "voice_auto_send", False, create=True), \
+             patch.object(remoclaw, "voice_transcriber", transcriber, create=True):
             # Handler should NOT raise — it should log and continue.
-            await chati.handle_voice_message(update, ctx)
+            await remoclaw.handle_voice_message(update, ctx)
 
         assert "path" in captured_path
         assert not os.path.exists(captured_path["path"])
@@ -301,7 +301,7 @@ class TestHandleVoiceCallback:
         return update
 
     async def test_send_forwards_transcription_to_cli(self, monkeypatch):
-        import chati
+        import remoclaw
 
         update = self._make_callback_update("send")
         ctx = _make_context()
@@ -312,22 +312,22 @@ class TestHandleVoiceCallback:
         async def fake_execute(upd, c, prompt):
             captured["prompt"] = prompt
 
-        monkeypatch.setattr(chati, "_execute_and_reply", fake_execute)
+        monkeypatch.setattr(remoclaw, "_execute_and_reply", fake_execute)
 
-        await chati.handle_voice_callback(update, ctx)
+        await remoclaw.handle_voice_callback(update, ctx)
 
         assert captured.get("prompt") == "build feature X"
         # Transcription cleared from bot_data
         assert "thread:42:voice_transcription" not in ctx.bot_data
 
     async def test_edit_sets_edit_mode_flag(self, monkeypatch):
-        import chati
+        import remoclaw
 
         update = self._make_callback_update("edit")
         ctx = _make_context()
         ctx.bot_data["thread:42:voice_transcription"] = "original text"
 
-        await chati.handle_voice_callback(update, ctx)
+        await remoclaw.handle_voice_callback(update, ctx)
 
         assert ctx.bot_data.get("thread:42:voice_edit_mode") is True
         # Original transcription should still be available until replaced
@@ -335,19 +335,19 @@ class TestHandleVoiceCallback:
         update.callback_query.edit_message_text.assert_awaited()
 
     async def test_cancel_discards_transcription(self):
-        import chati
+        import remoclaw
 
         update = self._make_callback_update("cancel")
         ctx = _make_context()
         ctx.bot_data["thread:42:voice_transcription"] = "something"
 
-        await chati.handle_voice_callback(update, ctx)
+        await remoclaw.handle_voice_callback(update, ctx)
 
         assert "thread:42:voice_transcription" not in ctx.bot_data
         update.callback_query.edit_message_text.assert_awaited()
 
     async def test_malformed_callback_data_is_ignored(self):
-        import chati
+        import remoclaw
 
         update = MagicMock()
         update.effective_user = MagicMock(id=123456789)
@@ -361,17 +361,17 @@ class TestHandleVoiceCallback:
         ctx = _make_context()
 
         # Should not raise
-        await chati.handle_voice_callback(update, ctx)
+        await remoclaw.handle_voice_callback(update, ctx)
 
     async def test_send_with_expired_transcription_shows_error(self, monkeypatch):
         """If transcription is missing from bot_data (bot restart), show error."""
-        import chati
+        import remoclaw
 
         update = self._make_callback_update("send")
         ctx = _make_context()
         # No transcription stored — simulates bot restart
 
-        await chati.handle_voice_callback(update, ctx)
+        await remoclaw.handle_voice_callback(update, ctx)
 
         # Should show expiration message, NOT forward to CLI
         update.callback_query.edit_message_text.assert_awaited()
@@ -380,7 +380,7 @@ class TestHandleVoiceCallback:
 
     async def test_send_sets_update_message_from_callback_query(self, monkeypatch):
         """The 'send' action must set update.message = query.message for _execute_and_reply."""
-        import chati
+        import remoclaw
 
         update = self._make_callback_update("send")
         ctx = _make_context()
@@ -392,9 +392,9 @@ class TestHandleVoiceCallback:
             captured["prompt"] = prompt
             captured["has_message"] = upd.message is not None
 
-        monkeypatch.setattr(chati, "_execute_and_reply", fake_execute)
+        monkeypatch.setattr(remoclaw, "_execute_and_reply", fake_execute)
 
-        await chati.handle_voice_callback(update, ctx)
+        await remoclaw.handle_voice_callback(update, ctx)
 
         assert captured.get("prompt") == "test prompt"
         assert captured.get("has_message") is True  # update.message was set
@@ -409,7 +409,7 @@ class TestVoiceEditModeInHandleMessage:
     async def test_edit_mode_forwards_corrected_text(
         self, telegram_update_factory, monkeypatch
     ):
-        import chati
+        import remoclaw
 
         update = telegram_update_factory(text="corrected prompt", message_thread_id=42)
         ctx = _make_context()
@@ -421,9 +421,9 @@ class TestVoiceEditModeInHandleMessage:
         async def fake_execute(upd, c, prompt):
             captured["prompt"] = prompt
 
-        monkeypatch.setattr(chati, "_execute_and_reply", fake_execute)
+        monkeypatch.setattr(remoclaw, "_execute_and_reply", fake_execute)
 
-        await chati.handle_message(update, ctx)
+        await remoclaw.handle_message(update, ctx)
 
         assert captured.get("prompt") == "corrected prompt"
         # Flag and stored transcription cleared after one-shot intercept
@@ -433,7 +433,7 @@ class TestVoiceEditModeInHandleMessage:
     async def test_edit_mode_does_not_affect_other_threads(
         self, telegram_update_factory, monkeypatch
     ):
-        import chati
+        import remoclaw
 
         # Thread 42 has edit mode set, but message comes from thread 99
         update = telegram_update_factory(text="normal msg", message_thread_id=99)
@@ -445,9 +445,9 @@ class TestVoiceEditModeInHandleMessage:
         async def fake_execute(upd, c, prompt):
             captured["prompt"] = prompt
 
-        monkeypatch.setattr(chati, "_execute_and_reply", fake_execute)
+        monkeypatch.setattr(remoclaw, "_execute_and_reply", fake_execute)
 
-        await chati.handle_message(update, ctx)
+        await remoclaw.handle_message(update, ctx)
 
         # Thread 42 flag still set (untouched)
         assert ctx.bot_data.get("thread:42:voice_edit_mode") is True

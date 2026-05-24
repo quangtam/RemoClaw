@@ -1,4 +1,4 @@
-# Setup Chati with OpenAI Codex CLI
+# Setup RemoClaw with OpenAI Codex CLI
 
 ## Prerequisites
 
@@ -34,9 +34,9 @@ This opens a browser window. Sign in with your OpenAI/ChatGPT account. The sessi
 codex exec "say hello"
 ```
 
-You should see a response. If this works, Chati will work too.
+You should see a response. If this works, RemoClaw will work too.
 
-## Step 4: Configure Chati
+## Step 4: Configure RemoClaw
 
 Edit `.env`:
 
@@ -45,14 +45,14 @@ CLI_PROVIDER=codex
 PROJECT_DIR=/path/to/your/project
 ```
 
-That's it. No API key needed — Chati uses your local login session.
+That's it. No API key needed — RemoClaw uses your local login session.
 
 > **Optional:** If you prefer API key auth, set `OPENAI_API_KEY=sk-...` in `.env`.
 
 ## Step 5: Start and verify
 
 ```bash
-./chati start
+./remoclaw start
 ```
 
 Send `/status` in Telegram — you should see the Codex CLI version.

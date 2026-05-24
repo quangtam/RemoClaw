@@ -48,13 +48,13 @@ def _make_session(
 @pytest.fixture(autouse=True)
 def clear_session_pool():
     """Ensure a clean session pool before/after each test."""
-    import chati
+    import remoclaw
 
-    chati.runner._session_mgr._sessions.clear()
-    chati._thread_sessions.clear()
+    remoclaw.runner._session_mgr._sessions.clear()
+    remoclaw._thread_sessions.clear()
     yield
-    chati.runner._session_mgr._sessions.clear()
-    chati._thread_sessions.clear()
+    remoclaw.runner._session_mgr._sessions.clear()
+    remoclaw._thread_sessions.clear()
 
 
 # ─── /status tests ───────────────────────────────────────────────────────────
@@ -67,21 +67,21 @@ class TestCmdStatusEnhanced:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """Response includes active session count (e.g., '2/5 active')."""
-        from chati import cmd_status
-        import chati
+        from remoclaw import cmd_status
+        import remoclaw
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/proj")
-        chati.runner._session_mgr._sessions[10] = _make_session(
+        remoclaw.runner._session_mgr._sessions[10] = _make_session(
             thread_id=10, state=PtyState.STREAMING
         )
-        chati.runner._session_mgr._sessions[20] = _make_session(
+        remoclaw.runner._session_mgr._sessions[20] = _make_session(
             thread_id=20, state=PtyState.IDLE
         )
 
         update = telegram_update_factory(text="/status")
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
             await cmd_status(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -92,18 +92,18 @@ class TestCmdStatusEnhanced:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """Current thread's session state is shown with emoji."""
-        from chati import cmd_status
-        import chati
+        from remoclaw import cmd_status
+        import remoclaw
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/proj")
-        chati.runner._session_mgr._sessions[42] = _make_session(
+        remoclaw.runner._session_mgr._sessions[42] = _make_session(
             thread_id=42, state=PtyState.WAITING_FOR_USER
         )
 
         update = telegram_update_factory(text="/status", message_thread_id=42)
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
             await cmd_status(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -114,15 +114,15 @@ class TestCmdStatusEnhanced:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """No session in current thread → shows 'No session'."""
-        from chati import cmd_status
-        import chati
+        from remoclaw import cmd_status
+        import remoclaw
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/proj")
 
         update = telegram_update_factory(text="/status", message_thread_id=99)
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
             await cmd_status(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -132,15 +132,15 @@ class TestCmdStatusEnhanced:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """CLI not found → shows error message."""
-        from chati import cmd_status
-        import chati
+        from remoclaw import cmd_status
+        import remoclaw
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/proj")
 
         update = telegram_update_factory(text="/status")
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.runner, "check_status", new_callable=AsyncMock, return_value="❌ CLI not found: kiro-cli"):
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.runner, "check_status", new_callable=AsyncMock, return_value="❌ CLI not found: kiro-cli"):
             await cmd_status(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -151,8 +151,8 @@ class TestCmdStatusEnhanced:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """Response includes project name and timeout."""
-        from chati import cmd_status
-        import chati
+        from remoclaw import cmd_status
+        import remoclaw
         import db as db_module
         from db import init_db
 
@@ -162,8 +162,8 @@ class TestCmdStatusEnhanced:
         )
 
         update = telegram_update_factory(text="/status", message_thread_id=55)
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
             await cmd_status(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -174,16 +174,16 @@ class TestCmdStatusEnhanced:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """Response uses HTML parse mode."""
-        from chati import cmd_status
-        import chati
+        from remoclaw import cmd_status
+        import remoclaw
         from db import init_db
         from telegram.constants import ParseMode
 
         await init_db(temp_db_path, default_project_dir="/tmp/proj")
 
         update = telegram_update_factory(text="/status")
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
             await cmd_status(update, mock_context)
 
         kwargs = update.message.reply_text.call_args.kwargs
@@ -193,16 +193,16 @@ class TestCmdStatusEnhanced:
         self, telegram_update_factory, mock_context, temp_db_path
     ):
         """Response includes current model."""
-        from chati import cmd_status
-        import chati
+        from remoclaw import cmd_status
+        import remoclaw
         from db import init_db
 
         await init_db(temp_db_path, default_project_dir="/tmp/proj")
         mock_context.user_data["model"] = "opus"
 
         update = telegram_update_factory(text="/status")
-        with patch("chati.DB_PATH", temp_db_path), \
-             patch.object(chati.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(remoclaw.runner, "check_status", new_callable=AsyncMock, return_value="✅ Kiro CLI ready"):
             await cmd_status(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
@@ -219,7 +219,7 @@ class TestCmdHelpEnhanced:
         self, telegram_update_factory, mock_context
     ):
         """All v2 commands are listed."""
-        from chati import cmd_help
+        from remoclaw import cmd_help
 
         update = telegram_update_factory(text="/help")
         await cmd_help(update, mock_context)
@@ -237,7 +237,7 @@ class TestCmdHelpEnhanced:
         self, telegram_update_factory, mock_context
     ):
         """Response uses HTML parse mode."""
-        from chati import cmd_help
+        from remoclaw import cmd_help
         from telegram.constants import ParseMode
 
         update = telegram_update_factory(text="/help")
@@ -250,8 +250,8 @@ class TestCmdHelpEnhanced:
         self, telegram_update_factory, mock_context
     ):
         """Response includes current provider name and model."""
-        from chati import cmd_help
-        import chati
+        from remoclaw import cmd_help
+        import remoclaw
 
         mock_context.user_data["model"] = "haiku"
 
@@ -259,14 +259,14 @@ class TestCmdHelpEnhanced:
         await cmd_help(update, mock_context)
 
         reply = update.message.reply_text.call_args[0][0]
-        assert chati.runner.provider.name in reply
+        assert remoclaw.runner.provider.name in reply
         assert "haiku" in reply
 
     async def test_help_is_categorized(
         self, telegram_update_factory, mock_context
     ):
         """Help text is organized by category."""
-        from chati import cmd_help
+        from remoclaw import cmd_help
 
         update = telegram_update_factory(text="/help")
         await cmd_help(update, mock_context)
@@ -281,7 +281,7 @@ class TestCmdHelpEnhanced:
         self, telegram_update_factory, mock_context
     ):
         """Help mentions the decision prompt reply flow."""
-        from chati import cmd_help
+        from remoclaw import cmd_help
 
         update = telegram_update_factory(text="/help")
         await cmd_help(update, mock_context)
