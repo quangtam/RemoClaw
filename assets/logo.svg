@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f0f23"/>
+      <stop offset="100%" style="stop-color:#1a1a3e"/>
+    </linearGradient>
+    <linearGradient id="claw-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff6b35"/>
+      <stop offset="100%" style="stop-color:#e63946"/>
+    </linearGradient>
+    <linearGradient id="signal-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4cc9f0"/>
+      <stop offset="100%" style="stop-color:#7209b7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="200" cy="200" r="190" fill="url(#bg)" stroke="#2d2d5e" stroke-width="3"/>
+
+  <!-- Signal waves (remote) — top-left -->
+  <path d="M 95 130 A 60 60 0 0 1 130 95" fill="none" stroke="url(#signal-grad)" stroke-width="5" stroke-linecap="round" opacity="0.9"/>
+  <path d="M 80 145 A 85 85 0 0 1 145 80" fill="none" stroke="url(#signal-grad)" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <path d="M 65 160 A 110 110 0 0 1 160 65" fill="none" stroke="url(#signal-grad)" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+
+  <!-- Claw — stylized lobster/crab claw -->
+  <!-- Left pincer -->
+  <path d="M 150 200 C 150 160, 170 140, 190 150 C 200 155, 195 170, 185 180 L 195 195 Z"
+        fill="url(#claw-grad)" opacity="0.95"/>
+  <!-- Right pincer -->
+  <path d="M 250 200 C 250 160, 230 140, 210 150 C 200 155, 205 170, 215 180 L 205 195 Z"
+        fill="url(#claw-grad)" opacity="0.95"/>
+  <!-- Claw body/base -->
+  <ellipse cx="200" cy="230" rx="45" ry="35" fill="url(#claw-grad)" opacity="0.9"/>
+  <!-- Claw joint -->
+  <circle cx="200" cy="200" r="12" fill="#ff8c61"/>
+
+  <!-- Phone icon — bottom-right -->
+  <rect x="270" y="250" width="55" height="95" rx="10" ry="10" fill="none" stroke="#4cc9f0" stroke-width="3"/>
+  <rect x="278" y="260" width="39" height="65" rx="3" ry="3" fill="#4cc9f0" opacity="0.15"/>
+  <circle cx="297" cy="335" r="5" fill="none" stroke="#4cc9f0" stroke-width="2"/>
+  <!-- Code brackets on phone screen -->
+  <text x="287" y="295" font-family="monospace" font-size="18" fill="#4cc9f0" opacity="0.8">&lt;/&gt;</text>
+
+  <!-- Connection dots between claw and phone -->
+  <circle cx="255" cy="255" r="3" fill="#7209b7" opacity="0.8"/>
+  <circle cx="262" cy="248" r="2.5" fill="#7209b7" opacity="0.6"/>
+  <circle cx="268" cy="242" r="2" fill="#7209b7" opacity="0.4"/>
+
+  <!-- Text: RemoClaw -->
+  <text x="200" y="340" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="32" font-weight="700" fill="#ffffff" letter-spacing="1">
+    RemoClaw
+  </text>
+  <!-- Tagline -->
+  <text x="200" y="368" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#a0a0c0" letter-spacing="0.5">
+    remote control any AI coding agent
+  </text>
+</svg>

@@ -1,14 +1,13 @@
 # 🦞 RemoClaw
 
-```text
-    ____                       ______  __
-   / __ \___  ____ ___  ____  / ____/ / /___ __      __
-  / /_/ / _ \/ __ `__ \/ __ \/ /     / / __ `/ | /| / /
- / _, _/  __/ / / / / / /_/ / /___  / / /_/ /| |/ |/ /
-/_/ |_|\___/_/ /_/ /_/\____/\____/ /_/\__,_/ |__/|__/
+<p align="center">
+  <img src="assets/logo.svg" alt="RemoClaw Logo" width="200" />
+</p>
 
-    Remote control any AI coding agent from your phone 📱→💻
-```
+<p align="center">
+  <strong>Remote control any AI coding agent from your phone</strong><br/>
+  <em>📱→💻 Kiro · Claude Code · Gemini · Codex — all from Telegram</em>
+</p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
