@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshot.jpg" alt="RemoClaw screenshot" width="360" />
+  <img src="assets/remoclaw.jpg" alt="RemoClaw screenshot" width="360" />
 </p>
 
 ---

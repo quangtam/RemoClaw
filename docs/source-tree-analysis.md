@@ -38,7 +38,7 @@ chati/
 │
 ├── assets/                     # Static assets for README
 │   ├── demo.mp4                # Video demonstration
-│   └── screenshot.jpg          # Screenshot for README
+│   └── remoclaw.jpg          # Screenshot for README
 │
 ├── setup.sh                    # Interactive setup wizard (POSIX)
 ├── setup.bat                   # Interactive setup wizard (Windows)
