@@ -246,7 +246,20 @@ async def cmd_model(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /model — show model selection keyboard."""
     await update.message.reply_chat_action(ChatAction.TYPING)
 
-    models = await runner.list_models()
+    # Resolve per-thread provider to list correct models
+    thread_id = _get_thread_id(update) or DEFAULT_THREAD_ID
+    try:
+        resolved = await db.resolve_thread_config(
+            thread_id,
+            env_project_dir=config.project_dir,
+            env_cli_provider=config.cli_provider,
+            path=DB_PATH,
+        )
+        resolved_provider_name = resolved.cli_provider
+    except Exception:
+        resolved_provider_name = None
+
+    models = await runner.list_models(provider_name=resolved_provider_name)
     if not models:
         await update.message.reply_text("⚠️ Could not fetch models from CLI.")
         return
@@ -359,8 +372,21 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     thread_id = _get_thread_id(update)
     model = context.user_data.get("model", "auto")
 
+    # Resolve per-thread provider for status check
+    effective_thread_id = thread_id if thread_id is not None else DEFAULT_THREAD_ID
+    try:
+        resolved = await db.resolve_thread_config(
+            effective_thread_id,
+            env_project_dir=config.project_dir,
+            env_cli_provider=config.cli_provider,
+            path=DB_PATH,
+        )
+        resolved_provider_name = resolved.cli_provider
+    except Exception:
+        resolved_provider_name = None
+
     # CLI health check (shells out — expected for /status)
-    cli_status = await runner.check_status()
+    cli_status = await runner.check_status(provider_name=resolved_provider_name)
 
     # Session stats
     active = runner._session_mgr.active_count()
@@ -542,8 +568,13 @@ async def cmd_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         thread_config = None
 
     provider = runner.provider
-    provider_name = provider.name
-    cli_path = provider.config.cli_path
+    # Resolve per-thread provider for display
+    thread_provider = (
+        thread_config.cli_provider if thread_config and thread_config.cli_provider else config.cli_provider
+    )
+    effective_provider = runner.get_provider_for_thread(thread_provider)
+    provider_name = effective_provider.name
+    cli_path = effective_provider.config.cli_path
     # Model resolution: thread_config.model → user_data → "default"
     model = (
         (thread_config.model if thread_config and thread_config.model else None)
@@ -556,9 +587,6 @@ async def cmd_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         thread_config.timeout_seconds
         if thread_config and thread_config.timeout_seconds is not None and thread_config.timeout_seconds > 0
         else config.cli_timeout
-    )
-    thread_provider = (
-        thread_config.cli_provider if thread_config and thread_config.cli_provider else config.cli_provider
     )
 
     # Session pool stats
@@ -599,7 +627,7 @@ async def cmd_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     status_emoji = SessionManager.get_status_emoji(session.state)
     state_name = session.state.value
     ready_mark = "ready" if session.ready else "warming up"
-    usage_text = provider.parse_usage_output("") or "Usage data not available for this provider"
+    usage_text = effective_provider.parse_usage_output("") or "Usage data not available for this provider"
 
     pending_remaining: str | None = None
     if session.state == PtyState.WAITING_FOR_USER:
@@ -943,13 +971,13 @@ async def cmd_provider(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     thread_id = _get_thread_id(update) or DEFAULT_THREAD_ID
 
-    # Guard: reject switch if an active session exists for this thread
+    # Auto-kill active session if provider is changing (session is bound to old CLI binary)
     session = runner._sessions.get(thread_id)
+    session_was_killed = False
     if session and session.alive:
-        await update.message.reply_text(
-            "⚠️ Active process running. Use /cancel first, then try again.",
-        )
-        return
+        runner._kill_session(thread_id)
+        session_was_killed = True
+        logger.info("[cmd_provider] killed active session [thread=%s] for provider switch", thread_id)
 
     try:
         await db.upsert_thread_config(thread_id, cli_provider=name, path=DB_PATH)
@@ -963,9 +991,10 @@ async def cmd_provider(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     thread_label = f"thread {thread_id}" if thread_id != DEFAULT_THREAD_ID else "main chat"
     provider_class = available[name]
+    session_note = " (previous session ended)" if session_was_killed else ""
     await update.message.reply_text(
         f"✅ {thread_label} provider switched to <b>{provider_class.name}</b> "
-        f"(<code>{name}</code>)",
+        f"(<code>{name}</code>){session_note}",
         parse_mode=ParseMode.HTML,
     )
     logger.info("[cmd_provider] thread=%s → %s", thread_id, name)
@@ -1739,10 +1768,6 @@ async def _execute_and_reply_inner(
     preview_buffer = ""
     last_edit_time = 0.0
     response_started = False
-    response_marker = runner.provider.response_marker
-
-    if not response_marker:
-        response_started = True
 
     import time
 
@@ -1759,11 +1784,20 @@ async def _execute_and_reply_inner(
         resolved_timeout = resolved.timeout_seconds
         resolved_model = resolved.model or model
         resolved_project_dir = resolved.project_dir
+        resolved_provider_name = resolved.cli_provider
     except Exception as exc:
         logger.warning("[resolve_thread_config] fallback to defaults: %s", exc)
         resolved_timeout = config.cli_timeout
         resolved_model = model
         resolved_project_dir = config.project_dir
+        resolved_provider_name = None
+
+    # Get the effective provider's response marker
+    effective_provider = runner.get_provider_for_thread(resolved_provider_name)
+    response_marker = effective_provider.response_marker
+
+    if not response_marker:
+        response_started = True
 
     try:
         async for line in runner.execute_stream(
@@ -1773,6 +1807,7 @@ async def _execute_and_reply_inner(
             resume=resume,
             timeout_seconds=resolved_timeout,
             project_dir=resolved_project_dir,
+            provider_name=resolved_provider_name,
         ):
             # Handle DecisionPrompt — CLI is waiting for user input
             if isinstance(line, DecisionPrompt):
@@ -2157,9 +2192,9 @@ def main() -> None:
 
     # Background: idle session cleanup (runs every N seconds)
     async def _post_init(app_):
-        # Auto-register bot commands with Telegram
-        from telegram import BotCommand
-        await app_.bot.set_my_commands([
+        # Auto-register bot commands with Telegram (both default + private chats scope)
+        from telegram import BotCommand, BotCommandScopeAllPrivateChats
+        commands = [
             BotCommand("start", "Welcome message"),
             BotCommand("help", "Command reference"),
             BotCommand("new", "Start fresh session"),
@@ -2175,8 +2210,10 @@ def main() -> None:
             BotCommand("git", "Git info"),
             BotCommand("status", "CLI health check"),
             BotCommand("skills", "List BMAD workflows"),
-        ])
-        logger.info("Bot commands registered with Telegram")
+        ]
+        await app_.bot.set_my_commands(commands)
+        await app_.bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
+        logger.info("Bot commands registered with Telegram (default + all_private_chats)")
 
         async def _cleanup_loop():
             while True:

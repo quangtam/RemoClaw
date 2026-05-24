@@ -66,6 +66,8 @@ bash setup.sh           # Windows: setup.bat
 
 The setup wizard handles Python venv, dependencies, Telegram token, and `.env`. After it finishes, login your CLI once (`kiro-cli login` / `claude login` / `gemini auth` / `codex login`) and start chatting.
 
+> **Note:** Bot commands are registered automatically on first start — no need to configure them via BotFather.
+
 > Need manual setup or more control? See the [deployment guide](docs/deployment-guide.md).
 
 ## Supported agents

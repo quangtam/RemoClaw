@@ -77,7 +77,7 @@ class TestCmdProvider:
         reply = update.message.reply_text.call_args[0][0]
         assert "Unknown" in reply or "⚠️" in reply
 
-    async def test_active_session_blocks_switch(
+    async def test_active_session_killed_on_switch(
         self, telegram_update_factory, temp_db_path, clean_runner
     ):
         from remoclaw import cmd_provider
@@ -92,15 +92,19 @@ class TestCmdProvider:
         update = telegram_update_factory(text="/provider claude")
         ctx = MagicMock()
 
-        with patch("remoclaw.DB_PATH", temp_db_path):
+        with patch("remoclaw.DB_PATH", temp_db_path), \
+             patch.object(clean_runner, "_kill_session") as mock_kill:
             await cmd_provider(update, ctx)
 
-        # Provider should NOT have changed
+        # Provider SHOULD have changed (auto-kill behavior)
         config = await get_thread_config(DEFAULT_THREAD_ID, path=temp_db_path)
-        assert config.cli_provider is None
+        assert config.cli_provider == "claude"
+
+        # Session should have been killed
+        mock_kill.assert_called_with(DEFAULT_THREAD_ID)
 
         reply = update.message.reply_text.call_args[0][0]
-        assert "Active process" in reply or "/cancel" in reply
+        assert "Claude Code" in reply
 
     async def test_dead_session_allows_switch(
         self, telegram_update_factory, temp_db_path, clean_runner

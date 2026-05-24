@@ -73,6 +73,14 @@ class CliRunner:
             extra_args=list(config.cli_extra_args) if config.cli_extra_args else None,
         )
 
+        # Per-thread provider cache: provider_id → CliProvider instance
+        self._provider_cache: dict[str, CliProvider] = {
+            self._provider.provider_id: self._provider,
+        }
+
+        # Track which provider each thread session is using
+        self._session_providers: dict[int | None, str] = {}
+
         logger.info(
             "CLI Provider: %s (%s)",
             self._provider.name,
@@ -108,11 +116,39 @@ class CliRunner:
     def get_exit_code(self, thread_id: int | None) -> int:
         return self._exit_codes.get(thread_id, 0)
 
+    def get_provider_for_thread(self, provider_name: str | None = None) -> CliProvider:
+        """Get or create a CliProvider instance by name.
+
+        Uses a cache to avoid re-creating providers on every message.
+        Returns the global default if provider_name is None or matches default.
+        """
+        if not provider_name or provider_name == self._provider.provider_id:
+            return self._provider
+
+        if provider_name in self._provider_cache:
+            return self._provider_cache[provider_name]
+
+        # Create new provider instance
+        provider = create_provider(
+            provider_name=provider_name,
+            cli_path=None,  # auto-detect from PATH
+            api_key=self._config.cli_api_key,
+            trust_all_tools=self._config.trust_all_tools,
+            extra_args=list(self._config.cli_extra_args) if self._config.cli_extra_args else None,
+        )
+        self._provider_cache[provider_name] = provider
+        logger.info(
+            "Created cached provider: %s (%s)",
+            provider.name, provider.config.cli_path,
+        )
+        return provider
+
     # ── PTY session management ───────────────────────────────────
 
     async def _get_or_create_session(
         self, thread_id: int | None, *, model: str | None = None,
         project_dir: str | None = None,
+        provider: CliProvider | None = None,
     ) -> PtySession | None:
         """Get existing session or spawn a new interactive CLI via PTY.
 
@@ -120,33 +156,48 @@ class CliRunner:
             project_dir: Per-thread working directory for new sessions.
                 If None or empty, falls back to self._config.project_dir (.env default).
                 Existing sessions reuse their original spawn cwd regardless.
+            provider: Per-thread CLI provider. If None, uses self._provider (global).
+                If the provider differs from the session's original provider,
+                the existing session is killed and a new one spawned.
 
         Returns:
             PtySession on success, None if cwd is invalid (non-existent dir)
             or session limit exceeded.
         """
+        effective_provider = provider or self._provider
+        effective_provider_id = effective_provider.provider_id
+
         session = self._session_mgr.get(thread_id)
         if session and session.alive:
-            # Warn if bound project_dir differs from session's spawn cwd
-            effective_cwd = project_dir if project_dir else self._config.project_dir
-            session_cwd = getattr(session, "_spawn_cwd", None)
-            if session_cwd and session_cwd != effective_cwd:
+            # Check if provider changed — must kill and respawn
+            session_provider_id = self._session_providers.get(thread_id, self._provider.provider_id)
+            if session_provider_id != effective_provider_id:
                 logger.info(
-                    "[SessionManager] session reuse [thread=%s]: bound project_dir=%s "
-                    "differs from session spawn cwd=%s — use /new to switch",
-                    thread_id, effective_cwd, session_cwd,
+                    "[SessionManager] provider switch [thread=%s]: %s → %s — killing old session",
+                    thread_id, session_provider_id, effective_provider_id,
                 )
-            return session
-
-        # Clean up dead session
-        if session:
+                self._session_mgr.kill(thread_id)
+                # Fall through to spawn new session
+            else:
+                # Warn if bound project_dir differs from session's spawn cwd
+                effective_cwd = project_dir if project_dir else self._config.project_dir
+                session_cwd = getattr(session, "_spawn_cwd", None)
+                if session_cwd and session_cwd != effective_cwd:
+                    logger.info(
+                        "[SessionManager] session reuse [thread=%s]: bound project_dir=%s "
+                        "differs from session spawn cwd=%s — use /new to switch",
+                        thread_id, effective_cwd, session_cwd,
+                    )
+                return session
+        elif session:
+            # Clean up dead session
             self._session_mgr.kill(thread_id)
 
-        args = self._provider.build_interactive_args(model=model)
+        args = effective_provider.build_interactive_args(model=model)
         if not args:
             return None
 
-        env = self._env
+        env = effective_provider.build_env(os.environ.copy())
         cwd = project_dir if project_dir else self._config.project_dir
 
         # Validate cwd before forking — prevents silent child-process crashes
@@ -173,6 +224,7 @@ class CliRunner:
         try:
             session = self._session_mgr.create(thread_id, pid, fd)
             session._spawn_cwd = cwd  # Track for mismatch detection on reuse
+            self._session_providers[thread_id] = effective_provider_id
         except SessionLimitExceeded:
             # Clean up the spawned process we can't use
             try:
@@ -244,6 +296,7 @@ class CliRunner:
         resume: bool = False,
         timeout_seconds: int | None = None,
         project_dir: str | None = None,
+        provider_name: str | None = None,
     ) -> AsyncGenerator["str | DecisionPrompt", None]:
         """Execute a prompt and yield output lines.
 
@@ -251,23 +304,29 @@ class CliRunner:
             timeout_seconds: Per-thread override. If None, uses config.cli_timeout.
             project_dir: Per-thread working directory. If None, falls back to
                 config.project_dir. Existing sessions reuse their original cwd.
+            provider_name: Per-thread CLI provider ID. If None, uses global default.
+                If different from the current session's provider, the session is
+                killed and respawned with the new provider.
         """
         lock = self._get_lock(thread_id)
+        provider = self.get_provider_for_thread(provider_name)
 
         async with lock:
             session = await self._get_or_create_session(
                 thread_id, model=model, project_dir=project_dir,
+                provider=provider,
             )
 
             if session and session.alive:
                 async for line in self._stream_pty(
-                    session, prompt, thread_id, timeout_seconds=timeout_seconds
+                    session, prompt, thread_id, timeout_seconds=timeout_seconds,
+                    provider=provider,
                 ):
                     yield line
             else:
                 async for line in self._stream_non_interactive(
                     prompt, thread_id=thread_id, model=model, resume=resume,
-                    project_dir=project_dir,
+                    project_dir=project_dir, provider=provider,
                 ):
                     yield line
 
@@ -277,6 +336,7 @@ class CliRunner:
         prompt: str,
         thread_id: int | None,
         timeout_seconds: int | None = None,
+        provider: CliProvider | None = None,
     ) -> AsyncGenerator["str | DecisionPrompt", None]:
         """Send prompt to PTY session and yield response chunks or DecisionPrompt.
 
@@ -285,12 +345,14 @@ class CliRunner:
 
         Args:
             timeout_seconds: Per-thread timeout override. If None, uses global.
+            provider: Per-thread provider for decision prompt patterns.
         """
         loop = asyncio.get_event_loop()
         effective_timeout = timeout_seconds or self._config.cli_timeout
         decision_idle_threshold = getattr(
             self._config, "decision_idle_threshold", 12
         )
+        effective_provider = provider or self._provider
 
         # Transition: IDLE → STREAMING when prompt written
         if self._session_mgr.get_state(thread_id) == PtyState.IDLE:
@@ -325,7 +387,7 @@ class CliRunner:
 
         # Provider-specific decision patterns (optional)
         provider_patterns = getattr(
-            self._provider, "decision_prompt_patterns", None
+            effective_provider, "decision_prompt_patterns", None
         ) or None
 
         while True:
@@ -474,6 +536,10 @@ class CliRunner:
         """
         lock = self._get_lock(thread_id)
 
+        # Resolve the provider for this thread's session
+        provider_id = self._session_providers.get(thread_id, self._provider.provider_id)
+        provider = self.get_provider_for_thread(provider_id)
+
         async with lock:
             session = self._session_mgr.get(thread_id)
             if session is None or not session.alive:
@@ -516,7 +582,8 @@ class CliRunner:
                 pass
 
             async for chunk in self._stream_pty_read_loop(
-                session, thread_id, timeout_seconds=timeout_seconds
+                session, thread_id, timeout_seconds=timeout_seconds,
+                provider=provider,
             ):
                 yield chunk
 
@@ -525,11 +592,13 @@ class CliRunner:
         session: PtySession,
         thread_id: int | None,
         timeout_seconds: int | None = None,
+        provider: CliProvider | None = None,
     ) -> AsyncGenerator["str | DecisionPrompt", None]:
         """Shared read loop — reads output, detects decision prompts + response marker."""
         loop = asyncio.get_event_loop()
         effective_timeout = timeout_seconds or self._config.cli_timeout
         decision_idle_threshold = getattr(self._config, "decision_idle_threshold", 12)
+        effective_provider = provider or self._provider
 
         deadline = time.monotonic() + effective_timeout
         last_output_time = time.monotonic()
@@ -538,7 +607,7 @@ class CliRunner:
         pause_start: float | None = None
         line_buffer: list[str] = []
         decision_checked_for_window = False
-        provider_patterns = getattr(self._provider, "decision_prompt_patterns", None) or None
+        provider_patterns = getattr(effective_provider, "decision_prompt_patterns", None) or None
 
         while True:
             now = time.monotonic()
@@ -665,13 +734,17 @@ class CliRunner:
         model: str | None,
         resume: bool,
         project_dir: str | None = None,
+        provider: CliProvider | None = None,
     ) -> AsyncGenerator[str, None]:
         """Fallback: non-interactive single-shot execution.
 
         Args:
             project_dir: Per-thread cwd. If None, falls back to config.project_dir.
+            provider: Per-thread CLI provider. If None, uses self._provider.
         """
-        args = self._provider.build_args(prompt, model=model, resume=resume)
+        effective_provider = provider or self._provider
+        args = effective_provider.build_args(prompt, model=model, resume=resume)
+        env = effective_provider.build_env(os.environ.copy())
         cwd = project_dir if project_dir else self._config.project_dir
 
         # Validate cwd before spawn
@@ -693,7 +766,7 @@ class CliRunner:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
-                env=self._env,
+                env=env,
             )
             assert process.stdout is not None
 
@@ -748,7 +821,7 @@ class CliRunner:
 
         except FileNotFoundError:
             self._exit_codes[thread_id] = -1
-            yield f"❌ CLI not found at: {self._provider.config.cli_path}\n"
+            yield f"❌ CLI not found at: {effective_provider.config.cli_path}\n"
         except Exception as exc:
             self._exit_codes[thread_id] = -1
             yield f"❌ Unexpected error: {exc}\n"
@@ -771,21 +844,22 @@ class CliRunner:
 
         return False
 
-    async def check_status(self) -> str:
+    async def check_status(self, provider_name: str | None = None) -> str:
         """Check if CLI is available."""
         import shutil
-        path = self._provider.config.cli_path
+        provider = self.get_provider_for_thread(provider_name)
+        path = provider.config.cli_path
         if not shutil.which(path) and not os.path.isfile(path):
             return f"❌ CLI not found: {path}"
 
         try:
-            test_args = self._provider.status_check_args()
+            test_args = provider.status_check_args()
             process = await asyncio.create_subprocess_exec(
                 *test_args,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=self._env,
+                env=provider.build_env(os.environ.copy()),
             )
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(), timeout=15,
@@ -793,18 +867,19 @@ class CliRunner:
             output = stdout.decode("utf-8", errors="replace").strip()
             if process.returncode == 0 and output:
                 active = self._session_mgr.active_count()
-                status = f"✅ {self._provider.name} ready\n\n{output}"
+                status = f"✅ {provider.name} ready\n\n{output}"
                 if active:
                     status += f"\n\n⚡ Active sessions: {active}"
                 return status
             err = stderr.decode("utf-8", errors="replace").strip()
-            return f"⚠️ {self._provider.name} issue:\n{err or output or 'Unknown error'}"
+            return f"⚠️ {provider.name} issue:\n{err or output or 'Unknown error'}"
         except Exception as exc:
-            return f"❌ Error checking {self._provider.name}: {exc}"
+            return f"❌ Error checking {provider.name}: {exc}"
 
-    async def list_models(self) -> list[dict]:
+    async def list_models(self, provider_name: str | None = None) -> list[dict]:
         """Fetch available models from CLI."""
-        list_args = self._provider.list_models_args()
+        provider = self.get_provider_for_thread(provider_name)
+        list_args = provider.list_models_args()
         if not list_args:
             return []
 
@@ -814,12 +889,12 @@ class CliRunner:
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=self._env,
+                env=provider.build_env(os.environ.copy()),
             )
             stdout, _ = await asyncio.wait_for(
                 process.communicate(), timeout=15,
             )
-            return self._provider.parse_models_output(
+            return provider.parse_models_output(
                 stdout.decode("utf-8", errors="replace")
             )
         except Exception as exc:

@@ -133,6 +133,8 @@ echo "  1. Open Telegram → find @BotFather"
 echo "  2. Send /newbot → follow the prompts"
 echo "  3. Copy the bot token"
 echo ""
+echo "  ℹ️  No need to set commands via BotFather — RemoClaw registers them automatically."
+echo ""
 ask "Paste your Telegram bot token: "
 read -r BOT_TOKEN
 
