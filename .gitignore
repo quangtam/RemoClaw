@@ -24,6 +24,7 @@ chati.db-wal
 .pytest_cache/
 .coverage
 htmlcov/
+.playwright-mcp/
 
 # BMad installed skills (local tooling, like .venv)
 .kiro/skills/
