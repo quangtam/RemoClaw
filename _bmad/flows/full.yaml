@@ -1,0 +1,124 @@
+## full flow — idea → shipped product, autonomous end-to-end
+##
+## The complete BMAD method:
+##   Phase 1 (analysis):    research the problem space
+##   Phase 2 (planning):    PRD + UX
+##   Phase 3 (solutioning): architecture + epics + readiness check
+##   Phase 4 (impl):        sprint planning + per-story dev/review loop
+##
+## This is a long-running flow. Expect dozens of gate pauses in /auto mode.
+## In /yolo mode it runs unattended, surfacing only on hard failures.
+##
+## Gates legend: see _bmad/flows/quick-dev.yaml
+
+name: BMAD Full
+id: full
+description: Idea → shipped product (PRD → Architecture → Stories → Implementation)
+default_model_strategy: balanced
+
+phases:
+  - id: analysis
+    description: Understand the problem space
+    steps:
+      - id: brief
+        skill: bmad-product-brief
+        model: opus
+        new_session: true
+        gate: human-review
+        max_retries: 3
+        ask_once: "Run product-brief? (skip if you already have one)"
+        optional: true
+
+  - id: planning
+    description: PRD and UX
+    steps:
+      - id: prd
+        skill: bmad-create-prd
+        model: opus
+        new_session: true
+        gate: human-review
+        on_findings: party-mode
+        max_retries: 3
+
+      - id: validate-prd
+        skill: bmad-validate-prd
+        model: sonnet
+        gate: auto-on-pass
+        max_retries: 3
+
+      - id: ux
+        skill: bmad-create-ux-design
+        model: sonnet
+        gate: human-review
+        max_retries: 3
+        optional: true
+        ask_once: "Does this project have a UI? (UX design step)"
+
+  - id: solutioning
+    description: Architecture, epics, readiness
+    steps:
+      - id: architecture
+        skill: bmad-create-architecture
+        model: opus
+        new_session: true
+        gate: human-review
+        on_findings: party-mode
+        max_retries: 3
+
+      - id: epics
+        skill: bmad-create-epics-and-stories
+        model: sonnet
+        gate: human-review
+        max_retries: 3
+
+      - id: readiness
+        skill: bmad-check-implementation-readiness
+        model: sonnet
+        gate: auto-on-pass
+        max_retries: 3
+
+  - id: implementation
+    description: Sprint planning + per-story loop
+    steps:
+      - id: sprint-plan
+        skill: bmad-sprint-planning
+        model: sonnet
+        new_session: true
+        gate: human-review
+        max_retries: 3
+
+      # Story loop — repeats for each story in sprint-status.yaml
+      # AutoRunner expands this into N step-instances at runtime
+      - id: story-loop
+        loop: per-story
+        new_session_each: true
+        max_retries: 3
+        substeps:
+          - id: create-story
+            skill: bmad-create-story
+            model: sonnet
+            gate: auto
+
+          - id: dev-story
+            skill: bmad-dev-story
+            model: opus
+            gate: auto
+
+          - id: code-review
+            skill: bmad-code-review
+            model: opus
+            gate: auto-on-pass
+            on_findings: party-mode
+
+          - id: tests
+            skill: bmad-qa-generate-e2e-tests
+            model: sonnet
+            gate: auto
+            optional: true
+
+  - id: ship
+    description: Wrap up the run
+    steps:
+      - id: present
+        builtin: present-summary
+        gate: human-review

@@ -121,6 +121,30 @@ async def init_db(path: str = DB_PATH, default_project_dir: str = "") -> None:
         except Exception:
             pass  # Column already exists
 
+        # Autonomous flow runs — tracks /auto and /yolo state per thread.
+        # One row per thread when an autonomous run is active. Rows are kept
+        # after completion for /auto status history; cleared on a fresh /auto.
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auto_run (
+                thread_id            INTEGER PRIMARY KEY,
+                flow_id              TEXT NOT NULL,
+                mode                 TEXT NOT NULL,        -- 'auto' | 'yolo'
+                status               TEXT NOT NULL,
+                current_phase_idx    INTEGER NOT NULL DEFAULT 0,
+                current_step_idx     INTEGER NOT NULL DEFAULT 0,
+                current_substep_idx  INTEGER NOT NULL DEFAULT 0,
+                current_loop_iter    INTEGER NOT NULL DEFAULT 0,
+                pending_gate_step_id TEXT,
+                last_error           TEXT,
+                ask_once_asked       TEXT NOT NULL DEFAULT '[]',  -- JSON array
+                history              TEXT NOT NULL DEFAULT '[]',  -- JSON array of StepRecord
+                started_at           TEXT,
+                last_active_at       TEXT
+            )
+            """
+        )
+
 
 # ─── Repository functions ────────────────────────────────────────────────────
 
@@ -394,3 +418,58 @@ async def upsert_tts_speed(
                 "[db] upsert_tts_speed: thread_id=%d has no row yet — skipping",
                 thread_id,
             )
+
+
+# ─── Autonomous run state (auto_run table) ───────────────────────────────────
+
+
+async def get_auto_run(thread_id: int, path: str = DB_PATH) -> dict | None:
+    """Return the auto_run row for `thread_id` or None.
+
+    Returned as a plain dict so consumers don't depend on aiosqlite.Row.
+    """
+    async with get_db(path) as db:
+        cursor = await db.execute(
+            "SELECT * FROM auto_run WHERE thread_id = ?",
+            (thread_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def upsert_auto_run(state_row: dict, path: str = DB_PATH) -> None:
+    """Insert or replace the auto_run row for a thread.
+
+    `state_row` should come from AutoState.to_db_row() — keys must match
+    the auto_run schema exactly.
+    """
+    cols = [
+        "thread_id", "flow_id", "mode", "status",
+        "current_phase_idx", "current_step_idx",
+        "current_substep_idx", "current_loop_iter",
+        "pending_gate_step_id", "last_error",
+        "ask_once_asked", "history",
+        "started_at", "last_active_at",
+    ]
+    placeholders = ",".join(["?"] * len(cols))
+    values = tuple(state_row.get(c) for c in cols)
+
+    async with get_db(path) as db:
+        await db.execute(
+            f"INSERT OR REPLACE INTO auto_run ({','.join(cols)}) VALUES ({placeholders})",
+            values,
+        )
+    logger.debug(
+        "[db] upsert_auto_run: thread_id=%s flow=%s status=%s",
+        state_row.get("thread_id"), state_row.get("flow_id"), state_row.get("status"),
+    )
+
+
+async def delete_auto_run(thread_id: int, path: str = DB_PATH) -> None:
+    """Remove the auto_run row for `thread_id` (used by /auto abort + cleanup)."""
+    async with get_db(path) as db:
+        await db.execute(
+            "DELETE FROM auto_run WHERE thread_id = ?",
+            (thread_id,),
+        )
+    logger.debug("[db] delete_auto_run: thread_id=%s", thread_id)

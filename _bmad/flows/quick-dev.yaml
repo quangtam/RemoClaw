@@ -1,0 +1,60 @@
+## quick-dev flow — single shippable feature, end-to-end
+##
+## Use case: "Build feature X" or "Fix bug Y" — a focused single-goal request
+## where the user already knows roughly what they want and we go from intent
+## to merged code in one go.
+##
+## How it differs from `full`:
+##   - No PRD / Architecture / Sprint planning — quick-dev assumes the project
+##     already has those.
+##   - Single skill (`bmad-quick-dev`) handles plan → implement → review → present
+##     internally. We just orchestrate around it: party-mode on review findings,
+##     auto-test, screenshot.
+##
+## Gates legend:
+##   auto          — never pause, log and continue
+##   auto-on-pass  — pause only if the step output indicates failure/findings
+##   human-review  — always pause and ask the user (auto mode)
+##                   /yolo overrides this to auto-approve
+##   party-mode    — divert into party-mode discussion (>=2 rounds), then continue
+
+name: Quick Dev
+id: quick-dev
+description: Intent → working code in one autonomous run
+default_model_strategy: balanced  # 'fast' | 'balanced' | 'strong'
+
+phases:
+  - id: develop
+    description: Plan → implement → review → present
+    steps:
+      - id: quick-dev
+        skill: bmad-quick-dev
+        model: opus           # heavy thinking — code generation
+        new_session: true
+        gate: human-review    # pause after for user to confirm before review
+        on_findings: party-mode
+        max_retries: 3
+
+      - id: review
+        skill: bmad-code-review
+        model: opus
+        gate: auto-on-pass    # if review finds issues → divert to party-mode
+        on_findings: party-mode
+        max_retries: 3
+        condition: previous_succeeded
+
+      - id: tests
+        skill: bmad-qa-generate-e2e-tests
+        model: sonnet
+        gate: auto
+        max_retries: 3
+        optional: true        # if user says no when asked, skip cleanly
+        ask_once: "Generate E2E tests for this change?"
+
+  - id: ship
+    description: Final verification + handoff
+    steps:
+      - id: present
+        # No skill invocation — orchestrator summarizes and asks user what's next
+        builtin: present-summary
+        gate: human-review
