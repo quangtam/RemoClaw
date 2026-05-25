@@ -1107,14 +1107,7 @@ async def _start_auto_run(
         flow_name = "quick-dev"
 
     # Find flows dir relative to project_dir of this thread
-    project_dir = config.project_dir
-    try:
-        tc = await db.get_thread_config(thread_id, path=DB_PATH)
-        if tc and tc.project_dir:
-            project_dir = tc.project_dir
-    except Exception:
-        pass
-    flows_dir = Path(project_dir) / "_bmad" / "flows"
+    flows_dir = await _resolve_flows_dir(thread_id)
 
     try:
         flow = auto.load_flow(flow_name, flows_dir=flows_dir)
@@ -1303,22 +1296,65 @@ async def _handle_auto_subcommand(
 
 
 async def _render_auto_status(update: Update, state: "auto.AutoState") -> None:
-    """Pretty-print /auto status."""
+    """Pretty-print /auto status — resolves phase/step indices to readable names."""
     icons = {
         "running": "▶️", "paused-gate": "⏸", "paused-fail": "❌",
         "paused-party": "🎉", "done": "✅", "aborted": "🛑",
     }
     icon = icons.get(state.status, "•")
 
+    # Try to load the flow so we can show phase + step names instead of indices
+    flows_dir = await _resolve_flows_dir(state.thread_id)
+    phase_name = f"phase {state.current_phase_idx + 1}"
+    step_name = f"step {state.current_step_idx + 1}"
+    flow_total = ""
+    try:
+        flow = auto.load_flow(state.flow_id, flows_dir=flows_dir)
+        if state.current_phase_idx < len(flow.phases):
+            phase = flow.phases[state.current_phase_idx]
+            phase_name = f"<b>{_escape_html(phase.id)}</b>"
+            if phase.description:
+                phase_name += f" ({_escape_html(phase.description)})"
+            if state.current_step_idx < len(phase.steps):
+                step = phase.steps[state.current_step_idx]
+                # Loop step? Show the substep we're on
+                if step.loop.value != "none" and step.substeps:
+                    sub_idx = min(state.current_substep_idx, len(step.substeps) - 1)
+                    sub = step.substeps[sub_idx]
+                    step_label = sub.skill or sub.builtin or sub.id
+                    step_name = (
+                        f"<code>{_escape_html(step.id)}</code> "
+                        f"→ <code>{_escape_html(step_label)}</code> "
+                        f"(loop iter {state.current_loop_iter + 1})"
+                    )
+                else:
+                    step_label = step.skill or step.builtin or step.id
+                    step_name = f"<code>{_escape_html(step_label)}</code>"
+        # Total step count for progress
+        total = sum(len(p.steps) for p in flow.phases)
+        flow_total = f" — {total} total steps"
+    except Exception:
+        pass  # fall back to bare indices
+
     lines = [
-        f"{icon} <b>{_escape_html(state.flow_id)}</b> — <code>{state.status}</code>",
-        f"Mode: <code>{state.mode.value}</code>",
-        f"Phase {state.current_phase_idx + 1}, step {state.current_step_idx + 1}",
+        f"{icon} <b>{_escape_html(state.flow_id)}</b> — <code>{state.status}</code>"
+        f" [<code>{state.mode.value}</code>]{flow_total}",
+        f"📍 {phase_name}",
+        f"   ↳ {step_name}",
     ]
+
+    # If we're paused at a gate or fail, surface the relevant info loudly
     if state.pending_gate_step_id:
-        lines.append(f"Pending gate: <code>{_escape_html(state.pending_gate_step_id)}</code>")
+        lines.append(f"⏸ Awaiting approval for: <code>{_escape_html(state.pending_gate_step_id)}</code>")
     if state.last_error:
-        lines.append(f"Last error: <code>{_escape_html(state.last_error)}</code>")
+        lines.append(f"❌ Last error: <code>{_escape_html(state.last_error)}</code>")
+
+    if state.initial_prompt:
+        prompt_preview = state.initial_prompt[:120]
+        if len(state.initial_prompt) > 120:
+            prompt_preview += "…"
+        lines.append("")
+        lines.append(f"💬 Intent: <i>{_escape_html(prompt_preview)}</i>")
 
     if state.history:
         lines.append("")
@@ -1328,21 +1364,23 @@ async def _render_auto_status(update: Update, state: "auto.AutoState") -> None:
                 "success": "✅", "failed": "❌",
                 "skipped": "⏭️", "in-progress": "⏳",
             }.get(record.status, "•")
-            line = f"{sicon} <code>{_escape_html(record.step_id)}</code>"
+            label = record.skill or record.step_id
+            line = f"{sicon} <code>{_escape_html(label)}</code>"
             if record.attempts > 1:
                 line += f" ×{record.attempts}"
             if record.findings:
                 line += f" 🎉×{record.party_mode_rounds}"
+            if record.notes and record.status == "failed":
+                # Show short error for failed steps
+                short = record.notes.split("\n", 1)[0][:80]
+                line += f" — <i>{_escape_html(short)}</i>"
             lines.append(line)
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
-async def _resume_auto_run(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, state: "auto.AutoState",
-) -> None:
-    """Reload flow + restart driver from a paused state."""
-    thread_id = state.thread_id
+async def _resolve_flows_dir(thread_id: int) -> Path:
+    """Resolve flows dir for a given thread (per-thread project_dir aware)."""
     project_dir = config.project_dir
     try:
         tc = await db.get_thread_config(thread_id, path=DB_PATH)
@@ -1350,7 +1388,15 @@ async def _resume_auto_run(
             project_dir = tc.project_dir
     except Exception:
         pass
-    flows_dir = Path(project_dir) / "_bmad" / "flows"
+    return Path(project_dir) / "_bmad" / "flows"
+
+
+async def _resume_auto_run(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, state: "auto.AutoState",
+) -> None:
+    """Reload flow + restart driver from a paused state."""
+    thread_id = state.thread_id
+    flows_dir = await _resolve_flows_dir(thread_id)
 
     try:
         flow = auto.load_flow(state.flow_id, flows_dir=flows_dir)
