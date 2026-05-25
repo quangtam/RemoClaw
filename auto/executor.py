@@ -294,19 +294,23 @@ class AutoExecutor:
         """Trigger party-mode discussion via the bmad-party-mode skill.
 
         The skill itself orchestrates the rounds. We just kick it off with
-        the findings as input and trust the skill to do its thing.
+        the findings as input, stream the output back, and trust the skill
+        to do its thing. Returns the number of rounds executed (best-effort
+        — for now we trust the skill to honor min_rounds).
         """
-        await self._notify(
-            f"🎉 <i>Diverting to party-mode</i> — {min_rounds} rounds minimum",
-            thread_id,
-        )
-
         prompt = (
             f"bmad-party-mode\n\n"
             f"Discuss the following review findings. Run at least {min_rounds} "
             f"rounds; reach a recommendation by the end.\n\n"
             f"---\n{context}\n---"
         )
+
+        # Use the same streaming path as run_skill so users see the debate
+        stream_msg = await self._send_stream_header("bmad-party-mode", thread_id)
+
+        collected: list[str] = []
+        last_edit = 0.0
+        import time
 
         try:
             async for line in self.runner_ref.execute_stream(
@@ -316,12 +320,28 @@ class AutoExecutor:
             ):
                 if not isinstance(line, str):
                     continue
-                # Stream party-mode output to user verbatim — they should see it
-                pass  # output already streams via existing mechanism (TODO Sprint D)
+                collected.append(line)
+                now = time.monotonic()
+                if now - last_edit >= _STREAM_EDIT_INTERVAL:
+                    await self._edit_stream_message(
+                        stream_msg, "bmad-party-mode", "".join(collected),
+                    )
+                    last_edit = now
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.warning("[auto] party-mode failed: %s", exc)
+            await self._finalize_stream_message(
+                stream_msg, "bmad-party-mode",
+                f"❌ Party-mode crashed: {exc}",
+            )
             return 0
 
+        output = "".join(collected)
+        await self._finalize_stream_message(
+            stream_msg, "bmad-party-mode",
+            f"✅ {min_rounds}+ rounds complete\n\n{_truncate(output, 1200)}",
+        )
         return min_rounds
 
     async def list_pending_stories(self, *, thread_id: int) -> list[str]:
