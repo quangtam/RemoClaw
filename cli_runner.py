@@ -327,6 +327,7 @@ class CliRunner:
                 async for line in self._stream_non_interactive(
                     prompt, thread_id=thread_id, model=model, resume=resume,
                     project_dir=project_dir, provider=provider,
+                    timeout_seconds=timeout_seconds,
                 ):
                     yield line
 
@@ -735,14 +736,17 @@ class CliRunner:
         resume: bool,
         project_dir: str | None = None,
         provider: CliProvider | None = None,
+        timeout_seconds: int | None = None,
     ) -> AsyncGenerator[str, None]:
         """Fallback: non-interactive single-shot execution.
 
         Args:
             project_dir: Per-thread cwd. If None, falls back to config.project_dir.
             provider: Per-thread CLI provider. If None, uses self._provider.
+            timeout_seconds: Per-call max runtime. If None, uses config.cli_timeout.
         """
         effective_provider = provider or self._provider
+        effective_timeout = timeout_seconds or self._config.cli_timeout
         args = effective_provider.build_args(prompt, model=model, resume=resume)
         env = effective_provider.build_env(os.environ.copy())
         cwd = project_dir if project_dir else self._config.project_dir
@@ -756,7 +760,10 @@ class CliRunner:
             yield f"❌ Project directory does not exist: {cwd}\n"
             return
 
-        logger.info("Non-interactive [thread=%s]: %s", thread_id, " ".join(args))
+        logger.info(
+            "Non-interactive [thread=%s] (timeout=%ds): %s",
+            thread_id, effective_timeout, " ".join(args),
+        )
         logger.debug("[Non-interactive] spawn cwd [thread=%s]: %s", thread_id, cwd)
 
         try:
@@ -770,7 +777,7 @@ class CliRunner:
             )
             assert process.stdout is not None
 
-            deadline = time.monotonic() + self._config.cli_timeout
+            deadline = time.monotonic() + effective_timeout
             last_output_time = time.monotonic()
             last_warn_time = 0.0
 

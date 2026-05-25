@@ -22,7 +22,7 @@ class FakeExecutor:
     def __init__(self):
         self.calls: list[str] = []
 
-    async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None):
+    async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None, timeout_seconds=None):
         self.calls.append(skill)
         return StepResult(success=True)
 
@@ -30,17 +30,23 @@ class FakeExecutor:
         self.calls.append(f"builtin:{builtin}")
         return StepResult(success=True)
 
-    async def ask_human_review(self, *, thread_id, step):
+    async def ask_human_review(self, *, thread_id, step, timeout_seconds=None):
         return True
 
-    async def run_party_mode(self, *, thread_id, context, min_rounds):
+    async def run_party_mode(self, *, thread_id, context, min_rounds, timeout_seconds=None):
         return min_rounds
 
-    async def ask_once(self, *, thread_id, step, prompt):
+    async def ask_once(self, *, thread_id, step, prompt, timeout_seconds=None):
         return True
 
     async def list_pending_stories(self, *, thread_id):
         return []
+
+    async def artifact_exists(self, *, thread_id, path):
+        return False
+
+    async def is_validation_passed(self, *, thread_id, skill):
+        return False
 
 
 def _make_flow(steps_def):

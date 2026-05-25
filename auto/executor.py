@@ -75,7 +75,7 @@ class AutoExecutor:
     db_ref: object      # db module
     db_path: str
     project_dir_resolver: object | None = None  # callable(thread_id) -> str | None
-    decision_timeout: int = 1800  # 30 min default
+    decision_timeout: int = 86400  # 24h — autonomous runs may pause overnight
 
     # Captured output from the most recent skill run — used by builtins like
     # 'present-summary' that summarize what happened.
@@ -90,6 +90,7 @@ class AutoExecutor:
         model: str | None,
         new_session: bool,
         prompt_override: str | None = None,
+        timeout_seconds: int | None = None,
     ) -> "StepResult":
         """Run a BMAD skill, capturing output for findings detection.
 
@@ -99,6 +100,10 @@ class AutoExecutor:
 
         If `prompt_override` is provided (e.g. user's intent for quick-dev),
         we send `<skill> <prompt>` instead of just the skill name.
+
+        `timeout_seconds`: per-step CLI runtime cap. If None, falls back to
+        the global config.cli_timeout. Skill steps in autonomous mode are
+        long-running, so callers (AutoRunner) usually pass 1800+.
 
         Streams progress to Telegram via a single message that gets edited
         as new lines arrive — same pattern as normal /chat messages, but
@@ -154,6 +159,7 @@ class AutoExecutor:
                 model=resolved_model,
                 resume=not new_session,
                 project_dir=project_dir,
+                timeout_seconds=timeout_seconds,
             ):
                 if isinstance(line, str):
                     collected.append(line)
@@ -255,12 +261,16 @@ class AutoExecutor:
 
     async def ask_human_review(
         self, *, thread_id: int, step: "FlowStep",
+        timeout_seconds: int | None = None,
     ) -> bool:
         """Pause and ask the user to approve before continuing.
 
         Sends a message with [Approve] / [Abort] inline keyboard, then
         awaits a button click via the module-level _pending_user_decisions
         future. Returns True on approve, False on abort/timeout.
+
+        `timeout_seconds`: how long to wait for the user. Defaults to
+        the executor's `decision_timeout` (24h for autonomous runs).
         """
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         from html import escape
@@ -277,10 +287,14 @@ class AutoExecutor:
         )
         await self._send_with_keyboard(text, keyboard, thread_id)
 
-        return await self._await_decision(thread_id, step.id)
+        return await self._await_decision(
+            thread_id, step.id,
+            timeout=timeout_seconds or self.decision_timeout,
+        )
 
     async def ask_once(
         self, *, thread_id: int, step: "FlowStep", prompt: str,
+        timeout_seconds: int | None = None,
     ) -> bool:
         """Ask a yes/no question for `optional` steps (asked at most once
         per run thanks to AutoState.ask_once_asked tracking)."""
@@ -293,10 +307,14 @@ class AutoExecutor:
         ]])
         text = f"❓ <b>Optional step</b>\n{escape(prompt)}"
         await self._send_with_keyboard(text, keyboard, thread_id)
-        return await self._await_decision(thread_id, step.id)
+        return await self._await_decision(
+            thread_id, step.id,
+            timeout=timeout_seconds or self.decision_timeout,
+        )
 
     async def run_party_mode(
         self, *, thread_id: int, context: str, min_rounds: int,
+        timeout_seconds: int | None = None,
     ) -> int:
         """Trigger party-mode discussion via the bmad-party-mode skill.
 
@@ -324,6 +342,7 @@ class AutoExecutor:
                 prompt,
                 thread_id=thread_id,
                 resume=True,  # stay in same session
+                timeout_seconds=timeout_seconds,
             ):
                 if not isinstance(line, str):
                     continue
@@ -352,11 +371,145 @@ class AutoExecutor:
         return min_rounds
 
     async def list_pending_stories(self, *, thread_id: int) -> list[str]:
-        """Read sprint-status.yaml to find next story to implement.
+        """Read sprint-status.yaml to find stories that still need work.
 
-        Sprint A scope: returns empty list (loop expansion is Sprint C).
+        Looks for `<project_dir>/docs/implementation-artifacts/sprint-status.yaml`
+        (the BMAD convention) and returns ids whose status is not yet in a
+        terminal state. Anything other than `done` (or unrecognized) counts
+        as pending.
+
+        Returning an empty list signals "no work" and the runner skips the
+        surrounding loop entirely.
         """
-        return []
+        project_dir = await self._project_dir(thread_id)
+        if not project_dir:
+            return []
+
+        from pathlib import Path
+        candidates = [
+            Path(project_dir) / "docs" / "implementation-artifacts" / "sprint-status.yaml",
+            Path(project_dir) / "docs" / "implementation-artifacts" / "sprint-status.yml",
+        ]
+        sprint_file: Path | None = None
+        for c in candidates:
+            if c.is_file():
+                sprint_file = c
+                break
+        if sprint_file is None:
+            return []
+
+        try:
+            import yaml  # local import — yaml is already a dep via flow.py
+            with sprint_file.open("r", encoding="utf-8") as fh:
+                doc = yaml.safe_load(fh) or {}
+        except Exception as exc:
+            logger.warning("[auto] failed to read %s: %s", sprint_file, exc)
+            return []
+
+        statuses = doc.get("development_status") or {}
+        if not isinstance(statuses, dict):
+            return []
+
+        pending: list[str] = []
+        # BMAD convention: keys like '6-1-voice-input-whisper' are stories,
+        # 'epic-N' keys roll up to the epic level — skip those.
+        for story_id, status in statuses.items():
+            if not isinstance(story_id, str) or not isinstance(status, str):
+                continue
+            if story_id.startswith("epic-"):
+                continue
+            if status == "done":
+                continue
+            pending.append(story_id)
+        return pending
+
+    async def artifact_exists(
+        self, *, thread_id: int, path: str,
+    ) -> bool:
+        """Whether `path` (relative to project_dir) exists.
+
+        Absolute paths are honored as-is so flows can reference shared
+        artifacts outside the project root if they want.
+        """
+        from pathlib import Path
+        p = Path(path)
+        if not p.is_absolute():
+            project_dir = await self._project_dir(thread_id)
+            if not project_dir:
+                return False
+            p = Path(project_dir) / path
+        return p.exists()
+
+    async def is_validation_passed(
+        self, *, thread_id: int, skill: str,
+    ) -> bool:
+        """Heuristic: has the validation report been produced cleanly?
+
+        For `bmad-validate-prd`: look for a validation report under
+        `docs/planning-artifacts/` containing `validationStatus: COMPLETE`.
+
+        For `bmad-check-implementation-readiness`: look for a readiness
+        report containing a comparable `status: ready` / `readinessStatus`
+        marker.
+
+        Anything we can't confidently interpret returns False, which means
+        "run the validator anyway" — the safe default.
+        """
+        project_dir = await self._project_dir(thread_id)
+        if not project_dir:
+            return False
+
+        from pathlib import Path
+        planning = Path(project_dir) / "docs" / "planning-artifacts"
+        if not planning.is_dir():
+            return False
+
+        # Pick the right glob + marker for this skill. We deliberately
+        # accept several name variations because BMAD skills produce report
+        # filenames using project-name slugs we can't predict here.
+        if skill == "bmad-validate-prd":
+            patterns = ["*prd-validation*.md", "*validation-report*.md", "*-validation.md"]
+            markers = ["validationStatus: COMPLETE", "validationStatus: complete"]
+        elif skill == "bmad-check-implementation-readiness":
+            patterns = ["*readiness-report*.md", "*readiness*.md"]
+            markers = ["readinessStatus: COMPLETE", "readinessStatus: complete", "readiness: ready"]
+        else:
+            return False
+
+        for pattern in patterns:
+            for report in planning.glob(pattern):
+                try:
+                    text = report.read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    continue
+                if any(m in text for m in markers):
+                    return True
+        return False
+
+    async def _project_dir(self, thread_id: int) -> str | None:
+        """Resolve the project directory bound to this thread.
+
+        Falls back to the bot's default project_dir if the thread isn't
+        bound. Returns None if we can't determine one — callers should
+        treat that as "no project" and degrade gracefully.
+        """
+        if self.project_dir_resolver:
+            try:
+                pd = await self.project_dir_resolver(thread_id)
+                if pd:
+                    return pd
+            except Exception:
+                pass
+        # Try thread_config directly
+        try:
+            tc = await self.db_ref.get_thread_config(thread_id, path=self.db_path)
+            if tc and tc.project_dir:
+                return tc.project_dir
+        except Exception:
+            pass
+        # Last resort: cwd
+        import os
+        return os.getcwd()
 
     # ── Internal helpers ─────────────────────────────────────────
 
@@ -371,19 +524,23 @@ class AutoExecutor:
         # Fall back to global default (config.cli_provider)
         return getattr(self.config_ref, "cli_provider", None)
 
-    async def _await_decision(self, thread_id: int, step_id: str) -> bool:
+    async def _await_decision(
+        self, thread_id: int, step_id: str,
+        *, timeout: int | None = None,
+    ) -> bool:
         """Wait for the user to click a gate button, with timeout."""
         loop = asyncio.get_event_loop()
         fut: asyncio.Future[bool] = loop.create_future()
         key = (thread_id, step_id)
         _pending_user_decisions[key] = fut
 
+        wait_seconds = timeout or self.decision_timeout
         try:
-            return await asyncio.wait_for(fut, timeout=self.decision_timeout)
+            return await asyncio.wait_for(fut, timeout=wait_seconds)
         except asyncio.TimeoutError:
             _pending_user_decisions.pop(key, None)
             await self._notify(
-                f"⏱ Decision timeout after {self.decision_timeout // 60} min — aborting",
+                f"⏱ Decision timeout after {wait_seconds // 60} min — aborting",
                 thread_id,
             )
             return False

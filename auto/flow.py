@@ -7,6 +7,8 @@ schema can grow without breaking older runs):
     id: <slug>
     description: <one-liner>
     default_model_strategy: fast | balanced | strong
+    default_step_timeout_seconds: <int>      # per-step max runtime, default 1800 (30min)
+    default_decision_timeout_seconds: <int>  # max wait for user gate reply, default 86400 (24h)
     phases:
       - id: <slug>
         description: <one-liner>
@@ -21,6 +23,16 @@ schema can grow without breaking older runs):
             condition: previous_succeeded | always
             optional: true|false
             ask_once: <prompt to user, only asked once when first encountered>
+            timeout_seconds: <int>             # per-step override
+            skip_if_validated: true|false      # skip when executor reports
+                                               # validation already passed
+                                               # (see Executor.is_validation_passed)
+            skip_if_artifact: <path>           # skip if artifact exists at
+                                               # path (relative to project_dir).
+                                               # In yolo: silently skip.
+                                               # In auto: if `ask_once` is also
+                                               # set, ask user (yes=run anyway,
+                                               # no=skip). Otherwise skip.
           - id: <slug>
             loop: per-story                    # expands at runtime
             new_session_each: true|false
@@ -90,6 +102,19 @@ class FlowStep:
     loop: LoopKind = LoopKind.NONE
     new_session_each: bool = False
     substeps: tuple["FlowStep", ...] = ()
+    # Per-step timeout. None → use Flow.default_step_timeout_seconds.
+    # Big skills like bmad-quick-dev can take 30+ min, so the default is
+    # generous (1800s); smaller checks should override down.
+    timeout_seconds: int | None = None
+    # Skip when a separate validation report already covers this step.
+    # The Executor decides what counts as "validated" (e.g. presence of a
+    # `validationStatus: COMPLETE` validation report). Used for steps that
+    # are pure double-checks of an earlier artifact (validate-prd, readiness).
+    skip_if_validated: bool = False
+    # Skip when the named artifact already exists (relative to project_dir).
+    # In yolo mode the skip is silent; in auto mode, if `ask_once` is also
+    # defined, the user is asked whether to regenerate or skip.
+    skip_if_artifact: str | None = None
 
     def __post_init__(self) -> None:
         if self.loop == LoopKind.NONE:
@@ -126,6 +151,10 @@ class Flow:
     description: str
     default_model_strategy: str
     phases: tuple[FlowPhase, ...]
+    # Defaults applied to any step that doesn't specify its own value.
+    # Generous defaults because autonomous runs are long-running.
+    default_step_timeout_seconds: int = 1800       # 30 min per step
+    default_decision_timeout_seconds: int = 86400  # 24h waiting for human
 
     def all_steps(self) -> list[FlowStep]:
         """Flatten phases → steps for sequential iteration.
@@ -188,6 +217,9 @@ def _parse_step(raw: dict[str, Any], phase_id: str) -> FlowStep:
         loop=loop,
         new_session_each=bool(raw.get("new_session_each", False)),
         substeps=substeps,
+        timeout_seconds=int(raw["timeout_seconds"]) if "timeout_seconds" in raw else None,
+        skip_if_validated=bool(raw.get("skip_if_validated", False)),
+        skip_if_artifact=raw.get("skip_if_artifact"),
     )
 
 
@@ -240,6 +272,8 @@ def load_flow(name: str, *, flows_dir: Path | None = None) -> Flow:
         description=raw.get("description", ""),
         default_model_strategy=raw.get("default_model_strategy", "balanced"),
         phases=phases,
+        default_step_timeout_seconds=int(raw.get("default_step_timeout_seconds", 1800)),
+        default_decision_timeout_seconds=int(raw.get("default_decision_timeout_seconds", 86400)),
     )
 
 

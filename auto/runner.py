@@ -86,6 +86,7 @@ class Executor(Protocol):
     async def run_skill(
         self, *, thread_id: int, skill: str, model: str | None,
         new_session: bool, prompt_override: str | None = None,
+        timeout_seconds: int | None = None,
     ) -> StepResult:
         """Execute a BMAD skill and capture its outcome."""
 
@@ -96,22 +97,50 @@ class Executor(Protocol):
 
     async def ask_human_review(
         self, *, thread_id: int, step: FlowStep,
+        timeout_seconds: int | None = None,
     ) -> bool:
         """Pause and ask the user to approve. Returns True to continue,
         False to abort. In /yolo mode this is bypassed by the runner."""
 
     async def run_party_mode(
         self, *, thread_id: int, context: str, min_rounds: int,
+        timeout_seconds: int | None = None,
     ) -> int:
         """Run party-mode discussion. Returns the number of rounds executed."""
 
     async def ask_once(
         self, *, thread_id: int, step: FlowStep, prompt: str,
+        timeout_seconds: int | None = None,
     ) -> bool:
         """Ask the user a yes/no question (used by `optional` + `ask_once`)."""
 
     async def list_pending_stories(self, *, thread_id: int) -> list[str]:
-        """Return story ids that need implementing — for loop expansion."""
+        """Return story ids that need implementing — for loop expansion.
+
+        Reads the project's sprint-status.yaml (or equivalent) and returns
+        the ids of stories not yet in a terminal state (e.g. 'backlog' or
+        'ready-for-dev'). Returning an empty list causes the runner to
+        skip the surrounding loop entirely.
+        """
+
+    async def artifact_exists(
+        self, *, thread_id: int, path: str,
+    ) -> bool:
+        """Whether `path` (relative to thread's project_dir) already exists.
+
+        Used by `skip_if_artifact` to avoid regenerating files that are
+        already present (e.g. a PRD checked into the repo).
+        """
+
+    async def is_validation_passed(
+        self, *, thread_id: int, skill: str,
+    ) -> bool:
+        """Whether `skill`'s output has already been validated previously.
+
+        Used by `skip_if_validated`. Implementation is skill-specific —
+        e.g. for `bmad-validate-prd`, look for a validation report with
+        `validationStatus: COMPLETE`.
+        """
 
 
 # ── Runner ───────────────────────────────────────────────────────────
@@ -141,10 +170,87 @@ class AutoRunner:
             self.state.status = STATUS_RUNNING
             self.state.pending_gate_step_id = None
 
+        # ── Loop expansion (Sprint C) ────────────────────────────
+        # If the cursor is sitting on a per-story loop step and we
+        # haven't snapshotted the story list yet, ask the executor
+        # which stories are pending and freeze them on state. If
+        # there are zero pending stories, skip the entire loop.
+        loop_action = await self._maybe_expand_loop()
+        if loop_action == "skipped":
+            return RunStatus.CONTINUE
+
         current = self._current_step()
         if current is None:
             self.state.status = STATUS_DONE
             return RunStatus.DONE
+
+        # ── Skip if validation already passed (Sprint C) ─────────
+        # Cheaper than running the validator skill again.
+        if current.skip_if_validated and current.skill:
+            try:
+                already_validated = await self.executor.is_validation_passed(
+                    thread_id=self.state.thread_id,
+                    skill=current.skill,
+                )
+            except Exception as exc:
+                # Defensive: if the heuristic crashes, prefer to run the
+                # skill — that's the safe default for "validation needed".
+                logger.warning(
+                    "[auto] is_validation_passed crashed for %s: %s",
+                    current.skill, exc,
+                )
+                already_validated = False
+            if already_validated:
+                self._record(current, status="skipped", notes="validation already passed")
+                self._advance()
+                return RunStatus.CONTINUE
+
+        # ── Skip if artifact already exists (Sprint C) ───────────
+        # In yolo mode this is silent. In auto mode, if the step also
+        # has `ask_once`, we ask the user whether to regenerate (yes)
+        # or keep the existing file (no/skip). Without `ask_once`,
+        # we just skip silently — same behavior as yolo.
+        if current.skip_if_artifact:
+            try:
+                exists = await self.executor.artifact_exists(
+                    thread_id=self.state.thread_id,
+                    path=current.skip_if_artifact,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[auto] artifact_exists crashed for %s: %s",
+                    current.skip_if_artifact, exc,
+                )
+                exists = False
+            if exists:
+                if (
+                    self.state.mode != RunMode.YOLO
+                    and current.ask_once
+                    and current.id not in self.state.ask_once_asked
+                ):
+                    self.state.ask_once_asked.add(current.id)
+                    wants_regen = await self.executor.ask_once(
+                        thread_id=self.state.thread_id,
+                        step=current,
+                        prompt=current.ask_once,
+                        timeout_seconds=self.flow.default_decision_timeout_seconds,
+                    )
+                    if not wants_regen:
+                        self._record(
+                            current, status="skipped",
+                            notes=f"artifact exists at {current.skip_if_artifact}",
+                        )
+                        self._advance()
+                        return RunStatus.CONTINUE
+                    # User said yes → fall through and run the step
+                else:
+                    # YOLO or no ask_once → skip silently
+                    self._record(
+                        current, status="skipped",
+                        notes=f"artifact exists at {current.skip_if_artifact}",
+                    )
+                    self._advance()
+                    return RunStatus.CONTINUE
 
         # ── Optional + ask_once ──────────────────────────────────
         if current.optional and current.ask_once and current.id not in self.state.ask_once_asked:
@@ -153,6 +259,7 @@ class AutoRunner:
                 thread_id=self.state.thread_id,
                 step=current,
                 prompt=current.ask_once,
+                timeout_seconds=self.flow.default_decision_timeout_seconds,
             )
             if not wants:
                 self._record(current, status="skipped", notes="user declined")
@@ -201,6 +308,7 @@ class AutoRunner:
                 thread_id=self.state.thread_id,
                 context=result.notes or f"findings from {current.id}",
                 min_rounds=min_rounds,
+                timeout_seconds=self.flow.default_step_timeout_seconds,
             )
 
         # ── Success — record and apply gate ──────────────────────
@@ -252,6 +360,9 @@ class AutoRunner:
 
     async def _execute_step(self, step: FlowStep) -> StepResult:
         """Dispatch to skill/builtin executor."""
+        # Resolve effective timeouts: step override → flow default
+        step_timeout = step.timeout_seconds or self.flow.default_step_timeout_seconds
+
         if step.builtin:
             return await self.executor.run_builtin(
                 thread_id=self.state.thread_id,
@@ -259,9 +370,18 @@ class AutoRunner:
                 state=self.state,
             )
 
-        # Determine if we need a fresh session
+        # Determine if we need a fresh session.
+        # The substep itself may declare new_session; otherwise, if it sits
+        # inside a per-story loop with `new_session_each: true`, the FIRST
+        # substep of every iteration gets a fresh session — so each story
+        # starts from a clean CLI context.
         new_session = step.new_session
-        if step.loop.value != "none" and step.new_session_each:
+        parent_loop = self._parent_loop_step()
+        if (
+            parent_loop is not None
+            and parent_loop.new_session_each
+            and self.state.current_substep_idx == 0
+        ):
             new_session = True
 
         # Pass the user's initial intent on the FIRST skill invocation only.
@@ -277,6 +397,7 @@ class AutoRunner:
             model=step.model,
             new_session=new_session,
             prompt_override=prompt_override,
+            timeout_seconds=step_timeout,
         )
 
     def _has_run_any_skill(self) -> bool:
@@ -291,16 +412,116 @@ class AutoRunner:
             return None
         step = phase.steps[self.state.current_step_idx]
 
-        # Loop step? Walk into substeps
+        # Loop step? Walk into substeps for the active iteration.
+        # Loop expansion (populating self.state.loop_stories) happens in
+        # _maybe_expand_loop() before _current_step() is consulted; here
+        # we just consume the snapshot.
         if step.loop.value != "none":
+            if not self.state.loop_stories:
+                # Loop entered but no pending stories — treat as no current step.
+                # _maybe_expand_loop is responsible for advancing past it.
+                return None
+            if self.state.current_loop_iter >= len(self.state.loop_stories):
+                return None
             if self.state.current_substep_idx >= len(step.substeps):
                 return None
             return step.substeps[self.state.current_substep_idx]
 
         return step
 
+    def _parent_loop_step(self) -> FlowStep | None:
+        """If the cursor is inside a loop step, return that loop's FlowStep.
+
+        Loop substeps reference the parent's `new_session_each` etc.
+        """
+        if self.state.current_phase_idx >= len(self.flow.phases):
+            return None
+        phase = self.flow.phases[self.state.current_phase_idx]
+        if self.state.current_step_idx >= len(phase.steps):
+            return None
+        step = phase.steps[self.state.current_step_idx]
+        if step.loop.value != "none":
+            return step
+        return None
+
+    async def _maybe_expand_loop(self) -> str:
+        """If parked on an unexpanded per-story loop, snapshot pending stories.
+
+        Returns:
+            "expanded": loop just got its story list populated.
+            "skipped": no pending stories — loop was advanced past, caller
+                       should treat this as a CONTINUE without running anything.
+            "noop":    not a loop, or already expanded; proceed normally.
+        """
+        if self.state.current_phase_idx >= len(self.flow.phases):
+            return "noop"
+        phase = self.flow.phases[self.state.current_phase_idx]
+        if self.state.current_step_idx >= len(phase.steps):
+            return "noop"
+        step = phase.steps[self.state.current_step_idx]
+
+        if step.loop.value == "none":
+            return "noop"
+
+        # Already expanded for this loop entry?
+        # We treat loop_stories as the snapshot for the *current* loop step.
+        # It's cleared (in _advance) when the loop step is fully consumed.
+        if self.state.loop_stories:
+            return "noop"
+
+        # Only expand at the start of a loop (iter 0, substep 0). If we're
+        # mid-iteration with an empty loop_stories the state was wiped and
+        # we just bail out — _advance() will move past the loop.
+        if self.state.current_substep_idx != 0 or self.state.current_loop_iter != 0:
+            return "noop"
+
+        try:
+            stories = list(await self.executor.list_pending_stories(
+                thread_id=self.state.thread_id,
+            ))
+        except Exception as exc:
+            logger.warning("[auto] list_pending_stories crashed: %s", exc)
+            stories = []
+
+        if not stories:
+            # No pending work — record skip on the loop step itself and
+            # advance past it.
+            self._record(step, status="skipped", notes="no pending stories")
+            # Advance step within phase (don't recurse through _advance's
+            # loop branch since the cursor is on the loop wrapper itself).
+            self.state.current_step_idx += 1
+            self.state.current_substep_idx = 0
+            self.state.current_loop_iter = 0
+            self._cross_phase_if_at_end()
+            return "skipped"
+
+        self.state.loop_stories = stories
+        return "expanded"
+
+    def _cross_phase_if_at_end(self) -> None:
+        """If current_step_idx is past end of current phase, advance to the
+        next phase (or mark DONE)."""
+        if self.state.current_phase_idx >= len(self.flow.phases):
+            return
+        phase = self.flow.phases[self.state.current_phase_idx]
+        if self.state.current_step_idx < len(phase.steps):
+            return
+        self.state.current_phase_idx += 1
+        self.state.current_step_idx = 0
+        self.state.current_substep_idx = 0
+        self.state.current_loop_iter = 0
+        if self.state.current_phase_idx >= len(self.flow.phases):
+            self.state.status = STATUS_DONE
+
     def _advance(self) -> None:
-        """Move to the next step; cross phase boundaries automatically."""
+        """Move to the next step; cross phase boundaries automatically.
+
+        Loop semantics:
+          - Inside substeps: bump substep_idx.
+          - End of substeps: bump loop_iter, reset substep_idx to 0.
+          - End of all iterations (loop_iter == len(loop_stories)):
+              clear loop_stories, advance past the loop step.
+        """
         phase = self.flow.phases[self.state.current_phase_idx]
         step = phase.steps[self.state.current_step_idx]
 
@@ -309,13 +530,16 @@ class AutoRunner:
             self.state.current_substep_idx += 1
             if self.state.current_substep_idx < len(step.substeps):
                 return
-            # Substeps done — advance loop iteration
+            # Substeps exhausted — start the next iteration
             self.state.current_substep_idx = 0
             self.state.current_loop_iter += 1
-            # Note: caller decides if loop is done by checking pending stories
-            # via Executor; runner just keeps iterating until they say stop.
-            # For now we exit the loop after one iteration if no expansion logic.
-            # (Sprint A scope — loop expansion for per-story comes in Sprint C.)
+            # Per-story loop is bounded by the snapshot taken at expansion.
+            if self.state.current_loop_iter < len(self.state.loop_stories):
+                return  # next iteration, restart from substep 0
+            # All iterations done — clear snapshot, fall through to the
+            # next step in the phase.
+            self.state.loop_stories = []
+            self.state.current_loop_iter = 0
 
         # Advance step within phase
         self.state.current_step_idx += 1
@@ -327,6 +551,7 @@ class AutoRunner:
         self.state.current_step_idx = 0
         self.state.current_substep_idx = 0
         self.state.current_loop_iter = 0
+        self.state.loop_stories = []
 
         if self.state.current_phase_idx >= len(self.flow.phases):
             self.state.status = STATUS_DONE
@@ -352,10 +577,44 @@ class AutoRunner:
         return "continue"
 
     def _prev_succeeded(self) -> bool:
-        if not self.state.history:
+        """Did the immediately preceding step in the same phase succeed?
+
+        "Preceding step" means the step at `current_step_idx - 1` of the
+        current phase. We look up its most recent record in history.
+
+        - First step in a phase → no predecessor → True (don't gate).
+        - Predecessor record missing → True (treat as if it ran fine; this
+          can happen with `optional` declined steps where we deliberately
+          recorded `skipped`, but defensive against state corruption too).
+        - Predecessor's last record is `success` or `skipped` → True.
+        - Predecessor's last record is `failed` → False.
+        """
+        # First step in the phase has no predecessor in this phase.
+        if self.state.current_step_idx == 0:
             return True
-        last = self.state.history[-1]
-        return last.status == "success"
+
+        if self.state.current_phase_idx >= len(self.flow.phases):
+            return True
+        phase = self.flow.phases[self.state.current_phase_idx]
+        prev_idx = self.state.current_step_idx - 1
+        if prev_idx < 0 or prev_idx >= len(phase.steps):
+            return True
+        prev_step = phase.steps[prev_idx]
+
+        # Find the most recent record for the predecessor's id (or, for
+        # loop wrappers, any of their substeps).
+        predecessor_ids = {prev_step.id}
+        for sub in prev_step.substeps:
+            predecessor_ids.add(sub.id)
+
+        for record in reversed(self.state.history):
+            if record.step_id in predecessor_ids:
+                # `skipped` is treated as a non-failure — predecessors that
+                # were deliberately bypassed should not block the dependent
+                # step from running.
+                return record.status != "failed"
+        # No record for predecessor — treat as not-yet-run (don't gate).
+        return True
 
     def _record(
         self,

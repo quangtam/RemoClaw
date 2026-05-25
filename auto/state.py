@@ -95,6 +95,12 @@ class AutoState:
     ask_once_asked: set[str] = field(default_factory=set)
     # Append-only log of completed/in-flight steps, ordered chronologically
     history: list[StepRecord] = field(default_factory=list)
+    # Story ids snapshotted when entering a per-story loop step. Frozen for
+    # the duration of that loop so we don't re-query mid-iteration (which
+    # would be racy if the skill marks stories done as it goes).
+    # Empty list means: loop not yet entered, OR no pending stories so loop
+    # was skipped. Cleared when the loop step is fully consumed.
+    loop_stories: list[str] = field(default_factory=list)
     started_at: str | None = None
     last_active_at: str | None = None
 
@@ -114,6 +120,7 @@ class AutoState:
             "initial_prompt": self.initial_prompt,
             "ask_once_asked": json.dumps(sorted(self.ask_once_asked)),
             "history": json.dumps([r.to_dict() for r in self.history]),
+            "loop_stories": json.dumps(self.loop_stories),
             "started_at": self.started_at,
             "last_active_at": self.last_active_at,
         }
@@ -123,6 +130,7 @@ class AutoState:
         """Inverse of to_db_row(). Tolerant of missing fields for forward-compat."""
         history_raw = row.get("history") or "[]"
         ask_once_raw = row.get("ask_once_asked") or "[]"
+        loop_stories_raw = row.get("loop_stories") or "[]"
         try:
             history = [StepRecord.from_dict(d) for d in json.loads(history_raw)]
         except (json.JSONDecodeError, TypeError):
@@ -131,6 +139,10 @@ class AutoState:
             ask_once = set(json.loads(ask_once_raw))
         except (json.JSONDecodeError, TypeError):
             ask_once = set()
+        try:
+            loop_stories = list(json.loads(loop_stories_raw))
+        except (json.JSONDecodeError, TypeError):
+            loop_stories = []
 
         return cls(
             thread_id=row["thread_id"],
@@ -146,6 +158,7 @@ class AutoState:
             initial_prompt=row.get("initial_prompt"),
             ask_once_asked=ask_once,
             history=history,
+            loop_stories=loop_stories,
             started_at=row.get("started_at"),
             last_active_at=row.get("last_active_at"),
         )

@@ -46,11 +46,22 @@ class FakeExecutor:
         self.party_mode_calls: list[dict] = []
         self.ask_once_calls: list[dict] = []
         self.ask_once_responses: dict[str, bool] = {}  # step_id → answer
+        # Sprint C: pending stories for loop expansion + artifact checks
+        self.pending_stories: list[str] = []
+        self.existing_artifacts: set[str] = set()
+        self.validation_passed_for: set[str] = set()  # set of skill names
+        self.cancel_calls: list[int] = []  # track session cancellations
 
-    async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None):
+    async def run_skill(
+        self, *, thread_id, skill, model, new_session,
+        prompt_override=None, timeout_seconds=None,
+    ):
+        if new_session:
+            self.cancel_calls.append(thread_id)
         self.skill_calls.append({
             "thread_id": thread_id, "skill": skill,
             "model": model, "new_session": new_session,
+            "timeout_seconds": timeout_seconds,
         })
         # Look up outcome by skill (since steps share skill names in tests)
         # Caller can override via `outcomes['<step_id_or_skill>'] = result`
@@ -60,24 +71,30 @@ class FakeExecutor:
         self.builtin_calls.append({"thread_id": thread_id, "builtin": builtin})
         return self.outcomes.get(builtin, StepResult(success=True))
 
-    async def ask_human_review(self, *, thread_id, step):
+    async def ask_human_review(self, *, thread_id, step, timeout_seconds=None):
         # Default: approve. Tests can override.
         return True
 
-    async def run_party_mode(self, *, thread_id, context, min_rounds):
+    async def run_party_mode(self, *, thread_id, context, min_rounds, timeout_seconds=None):
         self.party_mode_calls.append({
             "thread_id": thread_id, "context": context, "min_rounds": min_rounds,
         })
         return min_rounds
 
-    async def ask_once(self, *, thread_id, step, prompt):
+    async def ask_once(self, *, thread_id, step, prompt, timeout_seconds=None):
         self.ask_once_calls.append({
             "thread_id": thread_id, "step_id": step.id, "prompt": prompt,
         })
         return self.ask_once_responses.get(step.id, True)
 
     async def list_pending_stories(self, *, thread_id):
-        return []
+        return list(self.pending_stories)
+
+    async def artifact_exists(self, *, thread_id, path):
+        return path in self.existing_artifacts
+
+    async def is_validation_passed(self, *, thread_id, skill):
+        return skill in self.validation_passed_for
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
@@ -234,7 +251,7 @@ class CountingFailExecutor(FakeExecutor):
         self.fail_skill = fail_skill
         self.remaining_failures = fail_count
 
-    async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None):
+    async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None, timeout_seconds=None):
         self.skill_calls.append({"skill": skill, "model": model})
         if skill == self.fail_skill and self.remaining_failures > 0:
             self.remaining_failures -= 1
@@ -440,14 +457,13 @@ class TestInitialPrompt:
         ])
         state = _make_state()
         state.initial_prompt = "Implement Sprint C"
-
         # Custom executor that captures prompt_override
         class CapturingExecutor(FakeExecutor):
             def __init__(self):
                 super().__init__()
                 self.prompt_overrides: list[str | None] = []
 
-            async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None):
+            async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None, timeout_seconds=None):
                 self.prompt_overrides.append(prompt_override)
                 return await super().run_skill(
                     thread_id=thread_id, skill=skill, model=model,
@@ -473,7 +489,7 @@ class TestInitialPrompt:
                 super().__init__()
                 self.prompt_overrides: list[str | None] = []
 
-            async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None):
+            async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None, timeout_seconds=None):
                 self.prompt_overrides.append(prompt_override)
                 return await super().run_skill(
                     thread_id=thread_id, skill=skill, model=model,
@@ -484,3 +500,25 @@ class TestInitialPrompt:
         runner = AutoRunner(flow, state, ex)
         await runner.step()
         assert ex.prompt_overrides == [None]
+
+
+class TestStepTimeouts:
+    """Per-step timeout flows from FlowStep → run_skill kwargs."""
+
+    @pytest.mark.asyncio
+    async def test_step_timeout_override_used(self):
+        flow = _make_flow([{"id": "a", "skill": "x", "timeout_seconds": 7200}])
+        runner = AutoRunner(flow, _make_state(), FakeExecutor())
+        await runner.step()
+        assert runner.executor.skill_calls[0]["timeout_seconds"] == 7200
+
+    @pytest.mark.asyncio
+    async def test_flow_default_timeout_used_when_step_omits(self):
+        # Step has no timeout_seconds → falls back to flow default
+        flow = _make_flow([{"id": "a", "skill": "x"}])
+        # Override the flow's default
+        from dataclasses import replace
+        flow = replace(flow, default_step_timeout_seconds=2700)
+        runner = AutoRunner(flow, _make_state(), FakeExecutor())
+        await runner.step()
+        assert runner.executor.skill_calls[0]["timeout_seconds"] == 2700
