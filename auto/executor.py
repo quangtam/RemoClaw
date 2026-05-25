@@ -138,6 +138,16 @@ class AutoExecutor:
         if new_session:
             try:
                 await self.runner_ref.cancel(thread_id)
+                logger.info(
+                    "[auto] killed prior session before %s [thread=%s] — fresh context",
+                    skill, thread_id,
+                )
+                # Tell the user — context isolation is a feature, not a glitch
+                await self._notify(
+                    f"🆕 <i>Fresh session for</i> <code>{skill}</code> "
+                    f"<i>(BMAD-recommended for unbiased context)</i>",
+                    thread_id,
+                )
             except Exception as exc:
                 logger.warning("[auto] cancel failed: %s", exc)
 

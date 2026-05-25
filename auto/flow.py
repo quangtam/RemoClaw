@@ -155,6 +155,11 @@ class Flow:
     # Generous defaults because autonomous runs are long-running.
     default_step_timeout_seconds: int = 1800       # 30 min per step
     default_decision_timeout_seconds: int = 86400  # 24h waiting for human
+    # When true, every skill step gets a fresh CLI session unless the step
+    # explicitly sets new_session: false. Use for paranoia / max isolation.
+    # Defaults False so flow YAMLs that omit `new_session:` keep current
+    # behaviour (only fresh on explicit request).
+    default_new_session: bool = False
 
     def all_steps(self) -> list[FlowStep]:
         """Flatten phases → steps for sequential iteration.
@@ -274,6 +279,7 @@ def load_flow(name: str, *, flows_dir: Path | None = None) -> Flow:
         phases=phases,
         default_step_timeout_seconds=int(raw.get("default_step_timeout_seconds", 1800)),
         default_decision_timeout_seconds=int(raw.get("default_decision_timeout_seconds", 86400)),
+        default_new_session=bool(raw.get("default_new_session", False)),
     )
 
 

@@ -937,3 +937,32 @@ class TestPreviousSucceededPhaseAware:
         await runner.step()  # a → success
         await runner.step()  # b → should run
         assert [c["skill"] for c in fake_executor.skill_calls] == ["first", "second"]
+
+
+class TestDefaultNewSession:
+    """Flow-level default_new_session forces every step to start fresh."""
+
+    @pytest.mark.asyncio
+    async def test_explicit_step_overrides_flow_default(self):
+        # Step says new_session: false (well, omits → False), flow says default True
+        from dataclasses import replace
+        flow = _make_flow([{"id": "a", "skill": "x"}])
+        flow = replace(flow, default_new_session=True)
+        runner = AutoRunner(flow, _make_state(), FakeExecutor())
+        await runner.step()
+        assert runner.executor.skill_calls[0]["new_session"] is True
+
+    @pytest.mark.asyncio
+    async def test_default_false_keeps_step_value(self):
+        # Step doesn't ask for fresh; flow default also False
+        flow = _make_flow([{"id": "a", "skill": "x"}])
+        runner = AutoRunner(flow, _make_state(), FakeExecutor())
+        await runner.step()
+        assert runner.executor.skill_calls[0]["new_session"] is False
+
+    @pytest.mark.asyncio
+    async def test_step_explicit_true_wins(self):
+        flow = _make_flow([{"id": "a", "skill": "x", "new_session": True}])
+        runner = AutoRunner(flow, _make_state(), FakeExecutor())
+        await runner.step()
+        assert runner.executor.skill_calls[0]["new_session"] is True

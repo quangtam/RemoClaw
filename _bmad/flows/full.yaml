@@ -45,6 +45,7 @@ phases:
       - id: validate-prd
         skill: bmad-validate-prd
         model: balanced
+        new_session: true     # BMAD: validators run in fresh context for objectivity
         gate: auto-on-pass
         max_retries: 3
         skip_if_validated: true
@@ -52,6 +53,7 @@ phases:
       - id: ux
         skill: bmad-create-ux-design
         model: balanced
+        new_session: true
         gate: human-review
         max_retries: 3
         optional: true
@@ -73,6 +75,7 @@ phases:
       - id: epics
         skill: bmad-create-epics-and-stories
         model: balanced
+        new_session: true
         gate: human-review
         max_retries: 3
         skip_if_artifact: docs/planning-artifacts/epics.md
@@ -81,6 +84,7 @@ phases:
       - id: readiness
         skill: bmad-check-implementation-readiness
         model: balanced
+        new_session: true     # BMAD: readiness check needs fresh eyes
         gate: auto-on-pass
         max_retries: 3
         skip_if_validated: true
@@ -96,7 +100,10 @@ phases:
         max_retries: 3
 
       # Story loop — repeats for each story in sprint-status.yaml
-      # AutoRunner expands this into N step-instances at runtime
+      # AutoRunner expands this into N step-instances at runtime.
+      # `new_session_each: true` gives a fresh CLI session per story; the
+      # substeps below ALSO request fresh sessions inside each iteration so
+      # review/tests don't inherit the implementer's biases.
       - id: story-loop
         loop: per-story
         new_session_each: true
@@ -105,22 +112,26 @@ phases:
           - id: create-story
             skill: bmad-create-story
             model: balanced
+            new_session: true
             gate: auto
 
           - id: dev-story
             skill: bmad-dev-story
             model: strong
+            new_session: true
             gate: auto
 
           - id: code-review
             skill: bmad-code-review
             model: strong
+            new_session: true     # BMAD: critical — reviewer must not see impl context
             gate: auto-on-pass
             on_findings: party-mode
 
           - id: tests
             skill: bmad-qa-generate-e2e-tests
             model: balanced
+            new_session: true
             gate: auto
             optional: true
 

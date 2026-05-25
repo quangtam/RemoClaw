@@ -375,7 +375,8 @@ class AutoRunner:
         # inside a per-story loop with `new_session_each: true`, the FIRST
         # substep of every iteration gets a fresh session — so each story
         # starts from a clean CLI context.
-        new_session = step.new_session
+        # Also: flow.default_new_session forces fresh session on every skill.
+        new_session = step.new_session or self.flow.default_new_session
         parent_loop = self._parent_loop_step()
         if (
             parent_loop is not None

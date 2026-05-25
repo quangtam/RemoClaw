@@ -30,7 +30,7 @@ phases:
       - id: quick-dev
         skill: bmad-quick-dev
         model: strong         # heavy thinking — code generation
-        new_session: true
+        new_session: true     # fresh context — large skill, lots of tokens
         gate: human-review    # pause after for user to confirm before review
         on_findings: party-mode
         max_retries: 3
@@ -38,6 +38,7 @@ phases:
       - id: review
         skill: bmad-code-review
         model: strong
+        new_session: true     # BMAD: review in fresh session for unbiased eyes
         gate: auto-on-pass    # if review finds issues → divert to party-mode
         on_findings: party-mode
         max_retries: 3
@@ -46,6 +47,7 @@ phases:
       - id: tests
         skill: bmad-qa-generate-e2e-tests
         model: balanced
+        new_session: true     # BMAD: tests in fresh session, no impl noise
         gate: auto
         max_retries: 3
         optional: true        # if user says no when asked, skip cleanly
