@@ -1741,9 +1741,34 @@ async def _execute_and_reply_inner(
 
     model_label = model or "auto"
     session_label = "resume" if resume else "new"
-    provider_name = runner.provider.name
 
-    # Send initial streaming message
+    # Resolve per-thread config (provider, model, timeout, project_dir from SQLite with .env fallback)
+    try:
+        resolved = await db.resolve_thread_config(
+            thread_id if thread_id is not None else DEFAULT_THREAD_ID,
+            env_project_dir=config.project_dir,
+            env_cli_provider=config.cli_provider,
+            env_model=model,
+            env_timeout_seconds=config.cli_timeout,
+            path=DB_PATH,
+        )
+        resolved_timeout = resolved.timeout_seconds
+        resolved_model = resolved.model or model
+        resolved_project_dir = resolved.project_dir
+        resolved_provider_name = resolved.cli_provider
+    except Exception as exc:
+        logger.warning("[resolve_thread_config] fallback to defaults: %s", exc)
+        resolved_timeout = config.cli_timeout
+        resolved_model = model
+        resolved_project_dir = config.project_dir
+        resolved_provider_name = None
+
+    # Get the effective provider for display + response marker
+    effective_provider = runner.get_provider_for_thread(resolved_provider_name)
+    provider_name = effective_provider.name
+    response_marker = effective_provider.response_marker
+
+    # Send initial streaming message (now shows the correct per-thread provider)
     stream_msg = await update.message.reply_text(
         f"⏳ <i>Connecting to {_escape_html(provider_name)}...</i>"
         f" [{model_label} · {session_label}]",
@@ -1770,31 +1795,6 @@ async def _execute_and_reply_inner(
     response_started = False
 
     import time
-
-    # Resolve per-thread config (provider, model, timeout, project_dir from SQLite with .env fallback)
-    try:
-        resolved = await db.resolve_thread_config(
-            thread_id if thread_id is not None else DEFAULT_THREAD_ID,
-            env_project_dir=config.project_dir,
-            env_cli_provider=config.cli_provider,
-            env_model=model,
-            env_timeout_seconds=config.cli_timeout,
-            path=DB_PATH,
-        )
-        resolved_timeout = resolved.timeout_seconds
-        resolved_model = resolved.model or model
-        resolved_project_dir = resolved.project_dir
-        resolved_provider_name = resolved.cli_provider
-    except Exception as exc:
-        logger.warning("[resolve_thread_config] fallback to defaults: %s", exc)
-        resolved_timeout = config.cli_timeout
-        resolved_model = model
-        resolved_project_dir = config.project_dir
-        resolved_provider_name = None
-
-    # Get the effective provider's response marker
-    effective_provider = runner.get_provider_for_thread(resolved_provider_name)
-    response_marker = effective_provider.response_marker
 
     if not response_marker:
         response_started = True
