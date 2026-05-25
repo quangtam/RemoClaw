@@ -27,6 +27,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Throttle Telegram message edits to stay under rate limits (~30/min/chat).
+# 1.5s gives us 40/min headroom while still feeling responsive.
+_STREAM_EDIT_INTERVAL = 1.5
+
+# Hard cap on Telegram message length (4096 in API; we leave headroom for HTML).
+_TELEGRAM_MSG_CAP = 3800
+
+# Max chars of trailing output to show in the streaming preview.
+_STREAM_PREVIEW_TAIL = 1500
+
 
 # Module-level futures dict — keyed by (thread_id, step_id) → future
 # Set by callback handlers (gate approve/reject buttons, ask_once yes/no)
@@ -89,6 +99,10 @@ class AutoExecutor:
 
         If `prompt_override` is provided (e.g. user's intent for quick-dev),
         we send `<skill> <prompt>` instead of just the skill name.
+
+        Streams progress to Telegram via a single message that gets edited
+        as new lines arrive — same pattern as normal /chat messages, but
+        with a "🤖 step name" header so users can see which step is running.
         """
         from auto.runner import StepResult
 
@@ -112,7 +126,8 @@ class AutoExecutor:
         else:
             prompt = skill
 
-        await self._notify(f"⚙️ <i>Running</i> <code>{skill}</code>", thread_id)
+        # Send the initial "Running" message that we'll edit as output streams
+        stream_msg = await self._send_stream_header(skill, thread_id)
 
         # Resolve project_dir for this thread
         project_dir = None
@@ -123,7 +138,8 @@ class AutoExecutor:
                 project_dir = None
 
         collected: list[str] = []
-        timed_out = False
+        last_edit = 0.0
+
         try:
             async for line in self.runner_ref.execute_stream(
                 prompt,
@@ -132,13 +148,20 @@ class AutoExecutor:
                 resume=not new_session,
                 project_dir=project_dir,
             ):
-                # Best-effort string capture — DecisionPrompts are rare in
-                # autonomous mode (we use yolo/auto-approve flags), but if
-                # one shows up we treat it as a failure to avoid hanging.
                 if isinstance(line, str):
                     collected.append(line)
+                    # Throttled edit so we don't hit Telegram rate limit
+                    import time
+                    now = time.monotonic()
+                    if now - last_edit >= _STREAM_EDIT_INTERVAL:
+                        await self._edit_stream_message(stream_msg, skill, "".join(collected))
+                        last_edit = now
                 else:
                     logger.warning("[auto] unexpected DecisionPrompt during autonomous skill")
+                    await self._finalize_stream_message(
+                        stream_msg, skill,
+                        "❌ CLI asked for interactive input — auto mode can't answer",
+                    )
                     return StepResult(
                         success=False,
                         error="CLI asked for interactive input — auto mode can't answer",
@@ -147,6 +170,7 @@ class AutoExecutor:
             raise
         except Exception as exc:
             logger.exception("[auto] skill %s crashed", skill)
+            await self._finalize_stream_message(stream_msg, skill, f"💥 {exc}")
             return StepResult(success=False, error=str(exc))
 
         output = "".join(collected)
@@ -155,6 +179,10 @@ class AutoExecutor:
         # Did the CLI exit with a non-zero code?
         exit_code = self.runner_ref.get_exit_code(thread_id)
         if exit_code != 0:
+            await self._finalize_stream_message(
+                stream_msg, skill,
+                f"❌ Exit code {exit_code}\n\n{_truncate(output, 800)}",
+            )
             return StepResult(
                 success=False,
                 error=f"skill exited with code {exit_code}",
@@ -162,6 +190,14 @@ class AutoExecutor:
             )
 
         findings = has_findings(output)
+
+        # Final edit — show the complete output (truncated to keep msg short)
+        status_icon = "🎉 findings" if findings else "✅"
+        await self._finalize_stream_message(
+            stream_msg, skill,
+            f"{status_icon}\n\n{_truncate(output, 1500)}",
+        )
+
         return StepResult(
             success=True,
             findings=findings,
@@ -325,6 +361,76 @@ class AutoExecutor:
             )
         except Exception as exc:
             logger.warning("[auto] notify failed: %s", exc)
+
+    async def _send_stream_header(self, skill: str, thread_id: int | None):
+        """Send the initial 'running' message we'll keep editing as output arrives.
+
+        Returns the Message object so we can edit it later. Returns None if
+        send fails (we'll degrade gracefully — no streaming, just final result).
+        """
+        from html import escape
+        try:
+            return await self.bot.send_message(  # type: ignore[attr-defined]
+                chat_id=self.chat_id,
+                message_thread_id=thread_id if thread_id else None,
+                text=(
+                    f"⚙️ <b>Running</b> <code>{escape(skill)}</code>\n"
+                    f"<i>Streaming output…</i>"
+                ),
+                parse_mode="HTML",
+            )
+        except Exception as exc:
+            logger.warning("[auto] stream header send failed: %s", exc)
+            return None
+
+    async def _edit_stream_message(self, msg, skill: str, output_so_far: str) -> None:
+        """Edit the streaming message with the latest tail of output.
+
+        Stripping ANSI is delegated to message_utils to share logic with the
+        regular streaming path. Failures are silenced — we'd rather drop an
+        edit than crash the run.
+        """
+        if msg is None:
+            return
+        from html import escape
+        try:
+            from message_utils import strip_ansi, strip_streaming_noise
+        except ImportError:
+            strip_ansi = lambda s: s
+            strip_streaming_noise = lambda s: s
+
+        clean = strip_streaming_noise(strip_ansi(output_so_far))
+        tail = clean[-_STREAM_PREVIEW_TAIL:].strip()
+        # If we truncated the head, show an ellipsis at the start
+        if len(clean) > _STREAM_PREVIEW_TAIL:
+            tail = f"…\n{tail}"
+
+        text = (
+            f"⚙️ <b>Running</b> <code>{escape(skill)}</code>\n"
+            f"<pre>{escape(tail) or '(starting…)'}</pre>"
+        )
+        if len(text) > _TELEGRAM_MSG_CAP:
+            text = text[:_TELEGRAM_MSG_CAP] + "…</pre>"
+
+        try:
+            await msg.edit_text(text, parse_mode="HTML")
+        except Exception as exc:
+            # 'message is not modified' is fine; rate-limit hits will retry next interval
+            logger.debug("[auto] stream edit skipped: %s", exc)
+
+    async def _finalize_stream_message(self, msg, skill: str, summary: str) -> None:
+        """Replace the streaming message with a final compact result line."""
+        if msg is None:
+            return
+        from html import escape
+        text = (
+            f"<b>{escape(skill)}</b>\n"
+            f"<pre>{escape(summary[:_TELEGRAM_MSG_CAP - 200])}</pre>"
+        )
+        try:
+            await msg.edit_text(text, parse_mode="HTML")
+        except Exception as exc:
+            logger.debug("[auto] finalize edit skipped: %s", exc)
 
     async def _send_with_keyboard(
         self, text: str, keyboard, thread_id: int | None,
