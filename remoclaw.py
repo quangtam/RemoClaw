@@ -158,10 +158,26 @@ def _get_model(context: ContextTypes.DEFAULT_TYPE) -> str | None:
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command."""
     model = context.user_data.get("model", "auto")
+
+    # Resolve per-thread provider name
+    thread_id = _get_thread_id(update) or DEFAULT_THREAD_ID
+    try:
+        resolved = await db.resolve_thread_config(
+            thread_id,
+            env_project_dir=config.project_dir,
+            env_cli_provider=config.cli_provider,
+            path=DB_PATH,
+        )
+        provider_name = runner.get_provider_for_thread(resolved.cli_provider).name
+        project_dir = resolved.project_dir
+    except Exception:
+        provider_name = runner.provider.name
+        project_dir = config.project_dir
+
     await update.message.reply_text(
-        f"🚀 <b>RemoClaw</b> — {_escape_html(runner.provider.name)}\n\n"
+        f"🚀 <b>RemoClaw</b> — {_escape_html(provider_name)}\n\n"
         "Gửi tin nhắn bất kỳ → CLI xử lý trong project:\n"
-        f"<code>{config.project_dir}</code>\n\n"
+        f"<code>{_escape_html(project_dir)}</code>\n\n"
         "<b>Commands:</b>\n"
         "/help — Hướng dẫn sử dụng\n"
         "/model — Chọn AI model\n"
@@ -179,8 +195,20 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 @authorized
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help — show all available v2 commands."""
-    provider_name = runner.provider.name
     model = context.user_data.get("model", "auto")
+
+    # Resolve per-thread provider name
+    thread_id = _get_thread_id(update) or DEFAULT_THREAD_ID
+    try:
+        resolved = await db.resolve_thread_config(
+            thread_id,
+            env_project_dir=config.project_dir,
+            env_cli_provider=config.cli_provider,
+            path=DB_PATH,
+        )
+        provider_name = runner.get_provider_for_thread(resolved.cli_provider).name
+    except Exception:
+        provider_name = runner.provider.name
 
     await update.message.reply_text(
         "📖 <b>RemoClaw v2.0 — Command Reference</b>\n\n"
@@ -714,7 +742,7 @@ async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.warning("[cmd_sessions] list_all_threads failed: %s", exc)
         config_by_tid = {}
 
-    provider_name = runner.provider.name
+    default_provider_id = runner.provider.provider_id
     now = time.monotonic()
 
     lines: list[str] = [
@@ -739,7 +767,7 @@ async def cmd_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         thread_provider = (
             thread_config.cli_provider
             if thread_config and thread_config.cli_provider
-            else provider_name
+            else default_provider_id
         )
 
         emoji = SessionManager.get_status_emoji(session.state)
