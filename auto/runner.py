@@ -166,7 +166,13 @@ class AutoRunner:
             return RunStatus.CONTINUE
 
         # ── Execute ──────────────────────────────────────────────
-        result = await self._execute_step(current)
+        try:
+            result = await self._execute_step(current)
+        except Exception as exc:
+            # Treat any unhandled exception in the executor as a step failure
+            # so the retry/pause-fail flow handles it consistently.
+            logger.exception("[auto] executor raised on step %s", current.id)
+            result = StepResult(success=False, error=str(exc))
 
         # ── Failure handling ─────────────────────────────────────
         if not result.success:

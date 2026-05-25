@@ -31,6 +31,7 @@ from telegram.ext import (
 from config import Config
 from cli_runner import CliRunner
 from cli_providers import get_available_providers
+import auto
 from message_utils import format_output, split_message, strip_ansi, extract_final_response, strip_streaming_noise, detect_screenshots, is_code_heavy
 from session_manager import DecisionPrompt, PtyState, SessionManager
 import db
@@ -1068,6 +1069,356 @@ async def cmd_provider(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         parse_mode=ParseMode.HTML,
     )
     logger.info("[cmd_provider] thread=%s → %s", thread_id, name)
+
+
+# ── Autonomous Mode (/auto, /yolo) ───────────────────────────────
+
+
+def _project_dir_resolver_factory():
+    """Return an async callable: thread_id → project_dir (per-thread fallback)."""
+    async def resolve(thread_id: int) -> str | None:
+        try:
+            tc = await db.get_thread_config(thread_id, path=DB_PATH)
+            return (tc.project_dir if tc else None) or config.project_dir
+        except Exception:
+            return config.project_dir
+    return resolve
+
+
+async def _start_auto_run(
+    update: Update, context: ContextTypes.DEFAULT_TYPE,
+    *, mode: auto.RunMode, flow_name: str | None,
+) -> None:
+    """Shared entry point for /auto and /yolo commands."""
+    thread_id = _get_thread_id(update) or DEFAULT_THREAD_ID
+
+    # Already running?
+    if auto.is_driver_active(thread_id):
+        await update.message.reply_text(
+            "⚠️ An autonomous run is already active in this thread.\n"
+            "Use <code>/auto status</code> to check, or <code>/auto abort</code> to cancel.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    # Resolve flow name — default to quick-dev if user didn't specify
+    if not flow_name:
+        flow_name = "quick-dev"
+
+    # Find flows dir relative to project_dir of this thread
+    project_dir = config.project_dir
+    try:
+        tc = await db.get_thread_config(thread_id, path=DB_PATH)
+        if tc and tc.project_dir:
+            project_dir = tc.project_dir
+    except Exception:
+        pass
+    flows_dir = Path(project_dir) / "_bmad" / "flows"
+
+    try:
+        flow = auto.load_flow(flow_name, flows_dir=flows_dir)
+    except FileNotFoundError:
+        available = auto.list_available_flows(flows_dir=flows_dir)
+        await update.message.reply_text(
+            f"⚠️ Flow not found: <code>{_escape_html(flow_name)}</code>\n"
+            f"Available: {', '.join(available) if available else '(none)'}",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    except Exception as exc:
+        await update.message.reply_text(
+            f"⚠️ Flow load error: <code>{_escape_html(str(exc))}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    # Build state — fresh run, replace any existing row
+    from datetime import datetime, timezone
+    state = auto.AutoState(
+        thread_id=thread_id, flow_id=flow.id, mode=mode,
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    # Persist initial state
+    await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
+
+    # Build executor
+    executor = auto.AutoExecutor(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        runner_ref=runner,
+        config_ref=config,
+        db_ref=db,
+        db_path=DB_PATH,
+        project_dir_resolver=_project_dir_resolver_factory(),
+    )
+
+    auto_runner = auto.AutoRunner(flow=flow, state=state, executor=executor)
+
+    # Start the driver
+    async def _persist(row: dict) -> None:
+        await db.upsert_auto_run(row, path=DB_PATH)
+
+    async def _on_pause(s: auto.AutoState) -> None:
+        from auto.state import STATUS_PAUSED_FAIL, STATUS_PAUSED_GATE
+        if s.status == STATUS_PAUSED_GATE and s.pending_gate_step_id:
+            # ask_human_review already sent the keyboard via Executor
+            pass
+        elif s.status == STATUS_PAUSED_FAIL:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                message_thread_id=thread_id if thread_id != DEFAULT_THREAD_ID else None,
+                text=(
+                    f"❌ <b>Run paused — step failed</b>\n"
+                    f"Error: <code>{_escape_html(s.last_error or 'unknown')}</code>\n\n"
+                    f"Use <code>/auto resume</code> to retry, "
+                    f"or <code>/auto abort</code> to cancel."
+                ),
+                parse_mode=ParseMode.HTML,
+            )
+
+    async def _on_done(s: auto.AutoState) -> None:
+        # State is already STATUS_DONE — keep the row for /auto status to inspect
+        pass
+
+    async def _on_error(exc: Exception) -> None:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            message_thread_id=thread_id if thread_id != DEFAULT_THREAD_ID else None,
+            text=f"💥 Driver crashed: <code>{_escape_html(str(exc))}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    await auto.start_run(
+        auto_runner,
+        persist=_persist, on_pause=_on_pause,
+        on_done=_on_done, on_error=_on_error,
+    )
+
+    mode_label = "yolo" if mode == auto.RunMode.YOLO else "auto"
+    await update.message.reply_text(
+        f"🚀 Started <b>{mode_label}</b> run: <code>{flow.id}</code>\n"
+        f"<i>{_escape_html(flow.description)}</i>\n\n"
+        f"Use <code>/auto status</code> to check progress.",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@authorized
+async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /auto <flow> [args] — start an autonomous run with human-review pauses."""
+    text = (update.message.text or "").strip()
+    parts = text.split()
+    args = parts[1:] if len(parts) > 1 else []
+
+    # Subcommands: status / resume / abort / skip
+    if args and args[0] in {"status", "resume", "abort", "skip"}:
+        await _handle_auto_subcommand(update, context, args[0])
+        return
+
+    flow_name = args[0] if args else None
+    await _start_auto_run(update, context, mode=auto.RunMode.AUTO, flow_name=flow_name)
+
+
+@authorized
+async def cmd_yolo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /yolo <flow> — start an autonomous run that auto-approves every gate."""
+    text = (update.message.text or "").strip()
+    parts = text.split()
+    flow_name = parts[1] if len(parts) > 1 else None
+    await _start_auto_run(update, context, mode=auto.RunMode.YOLO, flow_name=flow_name)
+
+
+async def _handle_auto_subcommand(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, sub: str,
+) -> None:
+    """Dispatch /auto status|resume|abort|skip."""
+    thread_id = _get_thread_id(update) or DEFAULT_THREAD_ID
+
+    row = await db.get_auto_run(thread_id, path=DB_PATH)
+    if row is None:
+        await update.message.reply_text(
+            "ℹ️ No autonomous run for this thread.\n"
+            "Start one with <code>/auto quick-dev</code> or <code>/yolo quick-dev</code>.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    state = auto.AutoState.from_db_row(row)
+
+    if sub == "status":
+        await _render_auto_status(update, state)
+        return
+
+    if sub == "abort":
+        await auto.stop_driver(thread_id)
+        state.status = "aborted"
+        await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
+        await update.message.reply_text("🛑 Run aborted.")
+        return
+
+    if sub == "resume":
+        if not state.is_paused():
+            await update.message.reply_text(
+                f"ℹ️ Run is not paused (status: <code>{state.status}</code>).",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        # Re-load flow + restart driver from saved state
+        await _resume_auto_run(update, context, state)
+        return
+
+    if sub == "skip":
+        if not state.is_paused():
+            await update.message.reply_text(
+                "ℹ️ Run is not paused — nothing to skip.",
+            )
+            return
+        # Mark current step as skipped, advance, restart driver
+        await _skip_current_step(update, context, state)
+        return
+
+
+async def _render_auto_status(update: Update, state: "auto.AutoState") -> None:
+    """Pretty-print /auto status."""
+    icons = {
+        "running": "▶️", "paused-gate": "⏸", "paused-fail": "❌",
+        "paused-party": "🎉", "done": "✅", "aborted": "🛑",
+    }
+    icon = icons.get(state.status, "•")
+
+    lines = [
+        f"{icon} <b>{_escape_html(state.flow_id)}</b> — <code>{state.status}</code>",
+        f"Mode: <code>{state.mode.value}</code>",
+        f"Phase {state.current_phase_idx + 1}, step {state.current_step_idx + 1}",
+    ]
+    if state.pending_gate_step_id:
+        lines.append(f"Pending gate: <code>{_escape_html(state.pending_gate_step_id)}</code>")
+    if state.last_error:
+        lines.append(f"Last error: <code>{_escape_html(state.last_error)}</code>")
+
+    if state.history:
+        lines.append("")
+        lines.append("<b>Recent steps:</b>")
+        for record in state.history[-8:]:
+            sicon = {
+                "success": "✅", "failed": "❌",
+                "skipped": "⏭️", "in-progress": "⏳",
+            }.get(record.status, "•")
+            line = f"{sicon} <code>{_escape_html(record.step_id)}</code>"
+            if record.attempts > 1:
+                line += f" ×{record.attempts}"
+            if record.findings:
+                line += f" 🎉×{record.party_mode_rounds}"
+            lines.append(line)
+
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
+async def _resume_auto_run(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, state: "auto.AutoState",
+) -> None:
+    """Reload flow + restart driver from a paused state."""
+    thread_id = state.thread_id
+    project_dir = config.project_dir
+    try:
+        tc = await db.get_thread_config(thread_id, path=DB_PATH)
+        if tc and tc.project_dir:
+            project_dir = tc.project_dir
+    except Exception:
+        pass
+    flows_dir = Path(project_dir) / "_bmad" / "flows"
+
+    try:
+        flow = auto.load_flow(state.flow_id, flows_dir=flows_dir)
+    except Exception as exc:
+        await update.message.reply_text(
+            f"⚠️ Failed to reload flow: <code>{_escape_html(str(exc))}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    # Clear pause and resume
+    state.status = "running"
+    state.last_error = None
+    await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
+
+    executor = auto.AutoExecutor(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        runner_ref=runner,
+        config_ref=config,
+        db_ref=db,
+        db_path=DB_PATH,
+        project_dir_resolver=_project_dir_resolver_factory(),
+    )
+    auto_runner = auto.AutoRunner(flow=flow, state=state, executor=executor)
+
+    async def _persist(row: dict) -> None:
+        await db.upsert_auto_run(row, path=DB_PATH)
+
+    await auto.start_run(auto_runner, persist=_persist)
+    await update.message.reply_text("▶️ Resumed.")
+
+
+async def _skip_current_step(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, state: "auto.AutoState",
+) -> None:
+    """Mark current step as skipped, advance, then resume."""
+    # Append a synthetic skipped record so /auto status reflects it
+    from auto.state import StepRecord
+    from datetime import datetime, timezone
+    record = StepRecord(
+        step_id=state.pending_gate_step_id or "unknown",
+        phase_id="?", skill=None, status="skipped",
+        notes="user skipped via /auto skip",
+        started_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=datetime.now(timezone.utc).isoformat(),
+    )
+    state.history.append(record)
+
+    # Advance one step (manual)
+    state.current_step_idx += 1
+    state.status = "running"
+    state.pending_gate_step_id = None
+    await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
+
+    await update.message.reply_text("⏭️ Skipped. Resuming…")
+    await _resume_auto_run(update, context, state)
+
+
+@authorized
+async def handle_auto_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Inline-keyboard callback for gate approve/abort buttons.
+
+    Callback data format: 'auto:<action>:<step_id>' where action ∈ {approve, abort}.
+    """
+    query = update.callback_query
+    await query.answer()
+    data = query.data or ""
+    if not data.startswith("auto:"):
+        return
+
+    parts = data.split(":", 2)
+    if len(parts) != 3:
+        return
+    _, action, step_id = parts
+
+    thread_id = query.message.message_thread_id or DEFAULT_THREAD_ID
+    approved = action == "approve"
+
+    # Resolve the pending future in the executor
+    resolved = auto.resolve_pending_decision(thread_id, step_id, approved=approved)
+    if not resolved:
+        await query.edit_message_text("⚠️ This decision is no longer pending.")
+        return
+
+    icon = "✅" if approved else "❌"
+    label = "Approved" if approved else "Aborted"
+    await query.edit_message_text(
+        f"{icon} <b>{label}</b> — <code>{_escape_html(step_id)}</code>",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 # ── Skill Slash Command Handler ───────────────────────────────────
@@ -2247,6 +2598,9 @@ def main() -> None:
     app.add_handler(CommandHandler("sessions", cmd_sessions))
     app.add_handler(CommandHandler("voice", cmd_voice))
     app.add_handler(CommandHandler("git", cmd_git))
+    # Autonomous mode commands
+    app.add_handler(CommandHandler("auto", cmd_auto))
+    app.add_handler(CommandHandler("yolo", cmd_yolo))
 
     # Model selection callback
     app.add_handler(CallbackQueryHandler(handle_model_callback, pattern=r"^model:"))
@@ -2256,6 +2610,9 @@ def main() -> None:
 
     # Voice confirmation callback (Story 6.1)
     app.add_handler(CallbackQueryHandler(handle_voice_callback, pattern=r"^voice:"))
+
+    # Autonomous mode gate callbacks
+    app.add_handler(CallbackQueryHandler(handle_auto_callback, pattern=r"^auto:"))
 
     # Voice message handler (Story 6.1)
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))
@@ -2292,6 +2649,8 @@ def main() -> None:
             BotCommand("provider", "Switch CLI provider"),
             BotCommand("voice", "Toggle voice output"),
             BotCommand("git", "Git info"),
+            BotCommand("auto", "Run BMAD flow autonomously (pauses at gates)"),
+            BotCommand("yolo", "Run BMAD flow fully autonomously"),
             BotCommand("status", "CLI health check"),
             BotCommand("skills", "List installed skills"),
         ]

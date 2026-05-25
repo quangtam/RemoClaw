@@ -14,17 +14,30 @@ Public surface:
   AutoState                  — persistent run state (mirrors SQLite row)
 """
 
-from auto.flow import Flow, FlowStep, GateType, RunMode, load_flow
+from auto.driver import is_driver_active, start_run, stop_driver
+from auto.executor import (
+    AutoExecutor,
+    has_pending_decision,
+    resolve_pending_decision,
+)
+from auto.flow import Flow, FlowStep, GateType, RunMode, list_available_flows, load_flow
 from auto.runner import AutoRunner, RunStatus
 from auto.state import AutoState
 
 __all__ = [
+    "AutoExecutor",
+    "AutoRunner",
+    "AutoState",
     "Flow",
     "FlowStep",
     "GateType",
     "RunMode",
-    "load_flow",
-    "AutoRunner",
     "RunStatus",
-    "AutoState",
+    "has_pending_decision",
+    "is_driver_active",
+    "list_available_flows",
+    "load_flow",
+    "resolve_pending_decision",
+    "start_run",
+    "stop_driver",
 ]
