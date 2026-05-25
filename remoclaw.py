@@ -1191,10 +1191,11 @@ async def _start_auto_run(
     )
 
     mode_label = "yolo" if mode == auto.RunMode.YOLO else "auto"
+    status_cmd = f"/{mode_label} status"
     await update.message.reply_text(
         f"🚀 Started <b>{mode_label}</b> run: <code>{flow.id}</code>\n"
         f"<i>{_escape_html(flow.description)}</i>\n\n"
-        f"Use <code>/auto status</code> to check progress.",
+        f"Use <code>{status_cmd}</code> to check progress.",
         parse_mode=ParseMode.HTML,
     )
 
@@ -1231,11 +1232,23 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_yolo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /yolo <flow> [intent...] — autonomous run that auto-approves gates.
 
+    Also supports the same status/resume/abort/skip subcommands as /auto, since
+    a single thread only ever has one active run regardless of which mode
+    started it.
+
     Usage:
         /yolo quick-dev <intent>    — kicks off quick-dev with `intent` as the prompt
+        /yolo status                — show progress (alias of /auto status)
+        /yolo resume|abort|skip     — same control surface as /auto
     """
     text = (update.message.text or "").strip()
     parts = text.split(maxsplit=2)
+    args = parts[1:] if len(parts) > 1 else []
+
+    if args and args[0] in {"status", "resume", "abort", "skip"}:
+        await _handle_auto_subcommand(update, context, args[0])
+        return
+
     flow_name = parts[1] if len(parts) > 1 else None
     initial_prompt = parts[2] if len(parts) > 2 else None
     await _start_auto_run(
