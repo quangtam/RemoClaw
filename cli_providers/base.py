@@ -51,6 +51,30 @@ class CliProvider(ABC):
     # when the CLI is waiting for interactive input.
     decision_prompt_patterns: list[re.Pattern] = []
 
+    # Tier-to-model mapping. Flow YAML uses tiers ('fast', 'balanced', 'strong')
+    # so flows stay portable across providers. Subclasses override with their
+    # actual model names. Empty string means "use default" (omit --model flag).
+    tier_models: dict[str, str] = {
+        "fast": "",
+        "balanced": "",
+        "strong": "",
+    }
+
+    @classmethod
+    def resolve_tier(cls, tier_or_model: str | None) -> str | None:
+        """Resolve a tier name ('strong'/'balanced'/'fast') to an actual model.
+
+        If `tier_or_model` is a known tier, returns the provider-specific model
+        (or None if the tier maps to "default"). If it's already a real model
+        name, returns it unchanged. If None/empty, returns None.
+        """
+        if not tier_or_model:
+            return None
+        tier_lookup = cls.tier_models.get(tier_or_model)
+        if tier_lookup is not None:
+            return tier_lookup or None  # empty string → None (use CLI default)
+        return tier_or_model  # already a real model name
+
     def __init__(self, config: CliProviderConfig) -> None:
         self.config = config
 

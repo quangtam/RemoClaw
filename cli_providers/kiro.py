@@ -17,6 +17,14 @@ class KiroProvider(CliProvider):
     default_cli_path = "kiro-cli"
     response_marker = "> "
 
+    # Map tiers to Kiro's actual model names. Empty string ('') means "let
+    # Kiro pick its default" — used when no good match exists.
+    tier_models = {
+        "strong": "claude-opus-4.7",
+        "balanced": "claude-sonnet-4.6",
+        "fast": "claude-haiku-4.5",
+    }
+
     def build_args(self, prompt, *, model=None, resume=False):
         args = [self.config.cli_path, "chat", "--no-interactive"]
         if self.config.trust_all_tools:

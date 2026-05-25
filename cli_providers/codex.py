@@ -14,6 +14,13 @@ class CodexProvider(CliProvider):
     default_cli_path = "codex"
     response_marker = ""  # codex exec outputs response directly
 
+    tier_models = {
+        # Empty strings mean "let codex pick" — codex defaults are reasonable
+        "strong": "gpt-5",
+        "balanced": "",
+        "fast": "",
+    }
+
     def build_args(self, prompt, *, model=None, resume=False):
         args = [self.config.cli_path, "exec"]
         if self.config.trust_all_tools:

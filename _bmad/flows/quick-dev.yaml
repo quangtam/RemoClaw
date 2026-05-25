@@ -29,7 +29,7 @@ phases:
     steps:
       - id: quick-dev
         skill: bmad-quick-dev
-        model: opus           # heavy thinking — code generation
+        model: strong         # heavy thinking — code generation
         new_session: true
         gate: human-review    # pause after for user to confirm before review
         on_findings: party-mode
@@ -37,7 +37,7 @@ phases:
 
       - id: review
         skill: bmad-code-review
-        model: opus
+        model: strong
         gate: auto-on-pass    # if review finds issues → divert to party-mode
         on_findings: party-mode
         max_retries: 3
@@ -45,7 +45,7 @@ phases:
 
       - id: tests
         skill: bmad-qa-generate-e2e-tests
-        model: sonnet
+        model: balanced
         gate: auto
         max_retries: 3
         optional: true        # if user says no when asked, skip cleanly

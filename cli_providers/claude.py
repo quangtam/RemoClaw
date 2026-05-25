@@ -15,6 +15,13 @@ class ClaudeProvider(CliProvider):
     default_cli_path = "claude"
     response_marker = ""  # Claude -p outputs response directly
 
+    # Claude CLI accepts model aliases like "opus", "sonnet", "haiku"
+    tier_models = {
+        "strong": "opus",
+        "balanced": "sonnet",
+        "fast": "haiku",
+    }
+
     def build_args(self, prompt, *, model=None, resume=False):
         args = [self.config.cli_path, "-p"]
         if self.config.trust_all_tools:

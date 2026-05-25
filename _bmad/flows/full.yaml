@@ -22,7 +22,7 @@ phases:
     steps:
       - id: brief
         skill: bmad-product-brief
-        model: opus
+        model: strong
         new_session: true
         gate: human-review
         max_retries: 3
@@ -34,7 +34,7 @@ phases:
     steps:
       - id: prd
         skill: bmad-create-prd
-        model: opus
+        model: strong
         new_session: true
         gate: human-review
         on_findings: party-mode
@@ -42,13 +42,13 @@ phases:
 
       - id: validate-prd
         skill: bmad-validate-prd
-        model: sonnet
+        model: balanced
         gate: auto-on-pass
         max_retries: 3
 
       - id: ux
         skill: bmad-create-ux-design
-        model: sonnet
+        model: balanced
         gate: human-review
         max_retries: 3
         optional: true
@@ -59,7 +59,7 @@ phases:
     steps:
       - id: architecture
         skill: bmad-create-architecture
-        model: opus
+        model: strong
         new_session: true
         gate: human-review
         on_findings: party-mode
@@ -67,13 +67,13 @@ phases:
 
       - id: epics
         skill: bmad-create-epics-and-stories
-        model: sonnet
+        model: balanced
         gate: human-review
         max_retries: 3
 
       - id: readiness
         skill: bmad-check-implementation-readiness
-        model: sonnet
+        model: balanced
         gate: auto-on-pass
         max_retries: 3
 
@@ -82,7 +82,7 @@ phases:
     steps:
       - id: sprint-plan
         skill: bmad-sprint-planning
-        model: sonnet
+        model: balanced
         new_session: true
         gate: human-review
         max_retries: 3
@@ -96,23 +96,23 @@ phases:
         substeps:
           - id: create-story
             skill: bmad-create-story
-            model: sonnet
+            model: balanced
             gate: auto
 
           - id: dev-story
             skill: bmad-dev-story
-            model: opus
+            model: strong
             gate: auto
 
           - id: code-review
             skill: bmad-code-review
-            model: opus
+            model: strong
             gate: auto-on-pass
             on_findings: party-mode
 
           - id: tests
             skill: bmad-qa-generate-e2e-tests
-            model: sonnet
+            model: balanced
             gate: auto
             optional: true
 

@@ -14,6 +14,12 @@ class GeminiProvider(CliProvider):
     default_cli_path = "gemini"
     response_marker = ""  # Gemini -p outputs response directly
 
+    tier_models = {
+        "strong": "gemini-2.5-pro",
+        "balanced": "gemini-2.5-flash",
+        "fast": "gemini-2.5-flash-lite",
+    }
+
     def build_args(self, prompt, *, model=None, resume=False):
         args = [self.config.cli_path]
         # Trust-all-tools must come BEFORE -p (Gemini uses --yolo for auto-approve)

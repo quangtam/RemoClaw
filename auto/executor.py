@@ -106,11 +106,18 @@ class AutoExecutor:
         """
         from auto.runner import StepResult
 
+        # Resolve tier (strong/balanced/fast) → provider-specific model.
+        # If `model` is already a real model name, this returns it unchanged.
+        provider = self.runner_ref.get_provider_for_thread(
+            await self._resolve_provider_name(thread_id),
+        )
+        resolved_model = provider.resolve_tier(model)
+
         # Apply per-thread overrides for this step
-        if model:
+        if resolved_model:
             try:
                 await self.db_ref.upsert_thread_config(
-                    thread_id, model=model, path=self.db_path,
+                    thread_id, model=resolved_model, path=self.db_path,
                 )
             except Exception as exc:
                 logger.warning("[auto] model upsert failed: %s", exc)
@@ -144,7 +151,7 @@ class AutoExecutor:
             async for line in self.runner_ref.execute_stream(
                 prompt,
                 thread_id=thread_id,
-                model=model,
+                model=resolved_model,
                 resume=not new_session,
                 project_dir=project_dir,
             ):
@@ -352,6 +359,17 @@ class AutoExecutor:
         return []
 
     # ── Internal helpers ─────────────────────────────────────────
+
+    async def _resolve_provider_name(self, thread_id: int) -> str | None:
+        """Look up which provider this thread is using (for tier resolution)."""
+        try:
+            tc = await self.db_ref.get_thread_config(thread_id, path=self.db_path)
+            if tc and tc.cli_provider:
+                return tc.cli_provider
+        except Exception:
+            pass
+        # Fall back to global default (config.cli_provider)
+        return getattr(self.config_ref, "cli_provider", None)
 
     async def _await_decision(self, thread_id: int, step_id: str) -> bool:
         """Wait for the user to click a gate button, with timeout."""
