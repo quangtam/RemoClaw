@@ -1088,6 +1088,7 @@ def _project_dir_resolver_factory():
 async def _start_auto_run(
     update: Update, context: ContextTypes.DEFAULT_TYPE,
     *, mode: auto.RunMode, flow_name: str | None,
+    initial_prompt: str | None = None,
 ) -> None:
     """Shared entry point for /auto and /yolo commands."""
     thread_id = _get_thread_id(update) or DEFAULT_THREAD_ID
@@ -1137,6 +1138,7 @@ async def _start_auto_run(
     state = auto.AutoState(
         thread_id=thread_id, flow_id=flow.id, mode=mode,
         started_at=datetime.now(timezone.utc).isoformat(),
+        initial_prompt=initial_prompt,
     )
 
     # Persist initial state
@@ -1206,9 +1208,16 @@ async def _start_auto_run(
 
 @authorized
 async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /auto <flow> [args] — start an autonomous run with human-review pauses."""
+    """Handle /auto <flow> [intent...] — autonomous run with human-review pauses.
+
+    Usage:
+        /auto                       — defaults to quick-dev with no initial prompt
+        /auto quick-dev             — quick-dev flow, no prompt
+        /auto quick-dev <intent>    — pass intent to bmad-quick-dev as initial prompt
+        /auto status|resume|abort|skip
+    """
     text = (update.message.text or "").strip()
-    parts = text.split()
+    parts = text.split(maxsplit=2)
     args = parts[1:] if len(parts) > 1 else []
 
     # Subcommands: status / resume / abort / skip
@@ -1217,16 +1226,30 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     flow_name = args[0] if args else None
-    await _start_auto_run(update, context, mode=auto.RunMode.AUTO, flow_name=flow_name)
+    initial_prompt = parts[2] if len(parts) > 2 else None
+    await _start_auto_run(
+        update, context,
+        mode=auto.RunMode.AUTO, flow_name=flow_name,
+        initial_prompt=initial_prompt,
+    )
 
 
 @authorized
 async def cmd_yolo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /yolo <flow> — start an autonomous run that auto-approves every gate."""
+    """Handle /yolo <flow> [intent...] — autonomous run that auto-approves gates.
+
+    Usage:
+        /yolo quick-dev <intent>    — kicks off quick-dev with `intent` as the prompt
+    """
     text = (update.message.text or "").strip()
-    parts = text.split()
+    parts = text.split(maxsplit=2)
     flow_name = parts[1] if len(parts) > 1 else None
-    await _start_auto_run(update, context, mode=auto.RunMode.YOLO, flow_name=flow_name)
+    initial_prompt = parts[2] if len(parts) > 2 else None
+    await _start_auto_run(
+        update, context,
+        mode=auto.RunMode.YOLO, flow_name=flow_name,
+        initial_prompt=initial_prompt,
+    )
 
 
 async def _handle_auto_subcommand(

@@ -86,6 +86,9 @@ class AutoExecutor:
         The skill is invoked exactly the way a user would — by sending its
         slash form (e.g. `bmad-create-prd`) to the CLI. We don't reach
         inside the skill's internal steps.
+
+        If `prompt_override` is provided (e.g. user's intent for quick-dev),
+        we send `<skill> <prompt>` instead of just the skill name.
         """
         from auto.runner import StepResult
 
@@ -104,7 +107,11 @@ class AutoExecutor:
             except Exception as exc:
                 logger.warning("[auto] cancel failed: %s", exc)
 
-        prompt = prompt_override or skill
+        if prompt_override:
+            prompt = f"{skill}\n\n{prompt_override}"
+        else:
+            prompt = skill
+
         await self._notify(f"⚙️ <i>Running</i> <code>{skill}</code>", thread_id)
 
         # Resolve project_dir for this thread

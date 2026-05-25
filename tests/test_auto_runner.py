@@ -427,3 +427,60 @@ class TestBuiltinSteps:
         assert len(fake_executor.builtin_calls) == 1
         assert fake_executor.builtin_calls[0]["builtin"] == "present-summary"
         assert fake_executor.skill_calls == []
+
+
+class TestInitialPrompt:
+    """initial_prompt should be passed to the FIRST skill, then never again."""
+
+    @pytest.mark.asyncio
+    async def test_initial_prompt_passed_to_first_skill(self):
+        flow = _make_flow([
+            {"id": "a", "skill": "first"},
+            {"id": "b", "skill": "second"},
+        ])
+        state = _make_state()
+        state.initial_prompt = "Implement Sprint C"
+
+        # Custom executor that captures prompt_override
+        class CapturingExecutor(FakeExecutor):
+            def __init__(self):
+                super().__init__()
+                self.prompt_overrides: list[str | None] = []
+
+            async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None):
+                self.prompt_overrides.append(prompt_override)
+                return await super().run_skill(
+                    thread_id=thread_id, skill=skill, model=model,
+                    new_session=new_session, prompt_override=prompt_override,
+                )
+
+        ex = CapturingExecutor()
+        runner = AutoRunner(flow, state, ex)
+
+        await runner.step()  # first
+        await runner.step()  # second
+
+        # First call: prompt passed; second call: no prompt
+        assert ex.prompt_overrides == ["Implement Sprint C", None]
+
+    @pytest.mark.asyncio
+    async def test_no_initial_prompt_means_no_override(self, fake_executor):
+        flow = _make_flow([{"id": "a", "skill": "x"}])
+        state = _make_state()  # initial_prompt is None
+
+        class CapturingExecutor(FakeExecutor):
+            def __init__(self):
+                super().__init__()
+                self.prompt_overrides: list[str | None] = []
+
+            async def run_skill(self, *, thread_id, skill, model, new_session, prompt_override=None):
+                self.prompt_overrides.append(prompt_override)
+                return await super().run_skill(
+                    thread_id=thread_id, skill=skill, model=model,
+                    new_session=new_session, prompt_override=prompt_override,
+                )
+
+        ex = CapturingExecutor()
+        runner = AutoRunner(flow, state, ex)
+        await runner.step()
+        assert ex.prompt_overrides == [None]

@@ -86,6 +86,10 @@ class AutoState:
     pending_gate_step_id: str | None = None
     # When at a fail-pause, the last error
     last_error: str | None = None
+    # The user's intent passed alongside /auto or /yolo (e.g. "Implement Sprint C")
+    # Used as prompt_override on the first skill invocation so single-skill flows
+    # like quick-dev know what to build.
+    initial_prompt: str | None = None
     # Asked-once tracking — set of step_ids whose `ask_once` we've already
     # asked the user, so a retry/resume doesn't re-prompt
     ask_once_asked: set[str] = field(default_factory=set)
@@ -107,6 +111,7 @@ class AutoState:
             "current_loop_iter": self.current_loop_iter,
             "pending_gate_step_id": self.pending_gate_step_id,
             "last_error": self.last_error,
+            "initial_prompt": self.initial_prompt,
             "ask_once_asked": json.dumps(sorted(self.ask_once_asked)),
             "history": json.dumps([r.to_dict() for r in self.history]),
             "started_at": self.started_at,
@@ -138,6 +143,7 @@ class AutoState:
             current_loop_iter=row.get("current_loop_iter", 0),
             pending_gate_step_id=row.get("pending_gate_step_id"),
             last_error=row.get("last_error"),
+            initial_prompt=row.get("initial_prompt"),
             ask_once_asked=ask_once,
             history=history,
             started_at=row.get("started_at"),

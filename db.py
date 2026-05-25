@@ -144,6 +144,14 @@ async def init_db(path: str = DB_PATH, default_project_dir: str = "") -> None:
             )
             """
         )
+        # Migration: initial_prompt column added in Sprint B follow-up
+        try:
+            await db.execute(
+                "ALTER TABLE auto_run ADD COLUMN initial_prompt TEXT DEFAULT NULL"
+            )
+            logger.info("[db] init_db: added auto_run.initial_prompt column")
+        except Exception:
+            pass  # column already exists
 
 
 # ─── Repository functions ────────────────────────────────────────────────────
@@ -447,7 +455,7 @@ async def upsert_auto_run(state_row: dict, path: str = DB_PATH) -> None:
         "thread_id", "flow_id", "mode", "status",
         "current_phase_idx", "current_step_idx",
         "current_substep_idx", "current_loop_iter",
-        "pending_gate_step_id", "last_error",
+        "pending_gate_step_id", "last_error", "initial_prompt",
         "ask_once_asked", "history",
         "started_at", "last_active_at",
     ]

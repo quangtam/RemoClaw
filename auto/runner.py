@@ -264,12 +264,24 @@ class AutoRunner:
         if step.loop.value != "none" and step.new_session_each:
             new_session = True
 
+        # Pass the user's initial intent on the FIRST skill invocation only.
+        # Subsequent steps work off the artifacts the first step produced
+        # (PRD, story file, etc.) so they don't need the prompt repeated.
+        prompt_override: str | None = None
+        if self.state.initial_prompt and not self._has_run_any_skill():
+            prompt_override = self.state.initial_prompt
+
         return await self.executor.run_skill(
             thread_id=self.state.thread_id,
             skill=step.skill or "",
             model=step.model,
             new_session=new_session,
+            prompt_override=prompt_override,
         )
+
+    def _has_run_any_skill(self) -> bool:
+        """True once at least one skill step has executed (success or fail)."""
+        return any(r.skill for r in self.state.history)
 
     def _current_step(self) -> FlowStep | None:
         if self.state.current_phase_idx >= len(self.flow.phases):
