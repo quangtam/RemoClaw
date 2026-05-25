@@ -84,28 +84,60 @@
 /auto skip             # bỏ qua step hiện tại, chạy tiếp
 ```
 
-## Sprint C — Smart gates & loop expansion [TODO]
+## Sprint C — Smart gates & loop expansion [DONE]
 
-**Goal:** Make `full` flow's per-story loop work for real, and add smarter
-gate logic that skips redundant steps.
+**Files:** `auto/{flow,state,runner,executor}.py`, `_bmad/flows/full.yaml`,
+`db.py` migration (`loop_stories` column), `tests/test_auto_runner.py`,
+`tests/test_auto_state.py`, `tests/test_auto_flow.py`, `tests/test_auto_executor_helpers.py` (new).
 
-**Tasks:**
+**Built:**
 - Per-story loop expansion
-  - Read `sprint-status.yaml` to find pending stories
-  - Expand `story-loop` step into N iterations at runtime
-  - `new_session_each: true` → call `runner.cancel(thread_id)` between iterations
-  - Track current loop iter in AutoState (already there but unused)
+  - `AutoRunner._maybe_expand_loop` snapshots `Executor.list_pending_stories()`
+    onto `AutoState.loop_stories` when the cursor first lands on a `loop:
+    per-story` step. Empty list → loop step is recorded `skipped` and
+    advanced past.
+  - `_current_step` consults the snapshot for active iteration; `_advance`
+    walks substep → next iteration → next phase, clearing snapshot at end.
+  - `new_session_each: true` triggers `new_session=True` on the FIRST
+    substep of every iteration → AutoExecutor's `runner.cancel(thread_id)`
+    runs between stories.
+  - `loop_stories` persists through SQLite (new `loop_stories TEXT` column,
+    JSON array, with ALTER TABLE migration).
 - Auto-skip when validation passed
-  - `bmad-validate-prd` after `bmad-create-prd`: if PRD already validated, skip
-  - Similar for `bmad-check-implementation-readiness`
+  - New step field `skip_if_validated: bool` → runner asks executor
+    `is_validation_passed(skill)` before running. Skipped silently with
+    `notes="validation already passed"`.
+  - AutoExecutor implementation greps `docs/planning-artifacts/*` for
+    `validationStatus: COMPLETE` (validate-prd) or `readinessStatus:
+    COMPLETE` / `readiness: ready` (readiness check).
+  - Crash in heuristic falls back to running the validator (safe default).
+- Smarter project-context detection
+  - New step field `skip_if_artifact: <path>`. In yolo: silent skip.
+    In auto with `ask_once`: user is asked "Recreate?" — yes runs the
+    step, no skips.
+  - AutoExecutor `artifact_exists(path)` resolves against the thread's
+    bound `project_dir` (falls back via `project_dir_resolver` →
+    `thread_config.project_dir` → cwd).
+  - `full.yaml` now declares: `skip_if_artifact: docs/planning-artifacts/
+    {prd,architecture,epics}.md` with ask_once prompts; `skip_if_validated`
+    on validate-prd and readiness.
 - Better `previous_succeeded` semantics
-  - Currently checks last record only — should check last record for the
-    immediately preceding step in the same phase
-- Project context detection
-  - Check if `_bmad/bmm/config.yaml` exists → seed flow with that context
-  - If `docs/planning-artifacts/prd.md` exists → skip PRD step (with ask_once)
+  - `_prev_succeeded` now looks up the immediately preceding step *in the
+    current phase* (not just history's last record). First step of a phase
+    has no predecessor and runs.
+  - `skipped` records (e.g. optional declined) are treated as non-failure
+    so dependent steps still run.
 
-**Estimated:** ~400 LOC + 15 tests.
+**Test count:** +40 new (8 loop expansion, 3 skip_if_validated, 5 skip_if_artifact,
+4 prev_succeeded, 4 state/flow round-trip, 12 executor helpers, 4 misc).
+Cumulative: 473 total.
+
+**Cách dùng (after restart):**
+```
+/auto full              # cẩn thận, pause ở mọi human-review gate
+/yolo full              # tự chạy hết, kể cả per-story loop
+/auto status            # xem progress, có hiển thị story đang chạy
+```
 
 ## Sprint D — Party-mode integration [TODO]
 
@@ -155,6 +187,6 @@ actually streams agent debate to the user.
 | Pre-Sprint A baseline | 342 | 342 |
 | Sprint A | +57 | 399 |
 | Sprint B | +22 | 421 |
-| Sprint C (planned) | +15 | ~436 |
-| Sprint D (planned) | +10 | ~446 |
-| Sprint E (planned) | +8 | ~454 |
+| Sprint C | +40 | 473 |
+| Sprint D (planned) | +10 | ~483 |
+| Sprint E (planned) | +8 | ~491 |

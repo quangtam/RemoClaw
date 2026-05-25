@@ -39,12 +39,15 @@ phases:
         gate: human-review
         on_findings: party-mode
         max_retries: 3
+        skip_if_artifact: docs/planning-artifacts/prd.md
+        ask_once: "PRD already exists at docs/planning-artifacts/prd.md. Recreate from scratch?"
 
       - id: validate-prd
         skill: bmad-validate-prd
         model: balanced
         gate: auto-on-pass
         max_retries: 3
+        skip_if_validated: true
 
       - id: ux
         skill: bmad-create-ux-design
@@ -64,18 +67,23 @@ phases:
         gate: human-review
         on_findings: party-mode
         max_retries: 3
+        skip_if_artifact: docs/planning-artifacts/architecture.md
+        ask_once: "Architecture doc exists. Recreate from scratch?"
 
       - id: epics
         skill: bmad-create-epics-and-stories
         model: balanced
         gate: human-review
         max_retries: 3
+        skip_if_artifact: docs/planning-artifacts/epics.md
+        ask_once: "Epics doc exists. Recreate from scratch?"
 
       - id: readiness
         skill: bmad-check-implementation-readiness
         model: balanced
         gate: auto-on-pass
         max_retries: 3
+        skip_if_validated: true
 
   - id: implementation
     description: Sprint planning + per-story loop

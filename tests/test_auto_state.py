@@ -48,6 +48,30 @@ class TestAutoStateSerialization:
         assert s2.history[1].party_mode_rounds == 2
         assert s2.ask_once_asked == {"ux", "brief"}
 
+    def test_round_trip_loop_stories(self):
+        """Sprint C: loop_stories snapshots should survive serialization."""
+        s = AutoState(thread_id=7, flow_id="full", mode=RunMode.AUTO)
+        s.loop_stories = ["1-1-foo", "1-2-bar", "1-3-baz"]
+        s.current_loop_iter = 1
+
+        s2 = AutoState.from_db_row(s.to_db_row())
+
+        assert s2.loop_stories == ["1-1-foo", "1-2-bar", "1-3-baz"]
+        assert s2.current_loop_iter == 1
+
+    def test_round_trip_loop_stories_default_empty(self):
+        s = AutoState(thread_id=1, flow_id="x", mode=RunMode.AUTO)
+        s2 = AutoState.from_db_row(s.to_db_row())
+        assert s2.loop_stories == []
+
+    def test_corrupted_loop_stories_falls_back_to_empty(self):
+        row = {
+            "thread_id": 1, "flow_id": "x", "mode": "auto",
+            "loop_stories": "not-json{",
+        }
+        s = AutoState.from_db_row(row)
+        assert s.loop_stories == []
+
     def test_round_trip_paused_state(self):
         s = AutoState(
             thread_id=10, flow_id="quick-dev", mode=RunMode.AUTO,

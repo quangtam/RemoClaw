@@ -90,6 +90,14 @@ class AutoState:
     # Used as prompt_override on the first skill invocation so single-skill flows
     # like quick-dev know what to build.
     initial_prompt: str | None = None
+    # Wall-clock start of the currently-executing step. Set by AutoRunner just
+    # before invoking the executor; cleared when step finishes or pauses.
+    # Lets /auto status show "running for 12m 30s" instead of just "running".
+    current_step_started_at: str | None = None
+    # Last output line (or short summary) the executor saw while the current
+    # step was running. Refreshed every few seconds during execution so
+    # /auto status can show "still talking — last said: 'Reading PRD…'"
+    last_progress_line: str | None = None
     # Asked-once tracking — set of step_ids whose `ask_once` we've already
     # asked the user, so a retry/resume doesn't re-prompt
     ask_once_asked: set[str] = field(default_factory=set)
@@ -118,6 +126,8 @@ class AutoState:
             "pending_gate_step_id": self.pending_gate_step_id,
             "last_error": self.last_error,
             "initial_prompt": self.initial_prompt,
+            "current_step_started_at": self.current_step_started_at,
+            "last_progress_line": self.last_progress_line,
             "ask_once_asked": json.dumps(sorted(self.ask_once_asked)),
             "history": json.dumps([r.to_dict() for r in self.history]),
             "loop_stories": json.dumps(self.loop_stories),
@@ -156,6 +166,8 @@ class AutoState:
             pending_gate_step_id=row.get("pending_gate_step_id"),
             last_error=row.get("last_error"),
             initial_prompt=row.get("initial_prompt"),
+            current_step_started_at=row.get("current_step_started_at"),
+            last_progress_line=row.get("last_progress_line"),
             ask_once_asked=ask_once,
             history=history,
             loop_stories=loop_stories,

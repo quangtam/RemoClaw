@@ -77,6 +77,45 @@ phases:
         assert s.optional is True
         assert s.ask_once == "Run this?"
 
+    def test_sprint_c_skip_fields_default_false(self, flows_dir):
+        _write(flows_dir / "tiny.yaml", """
+id: tiny
+name: Tiny
+phases:
+  - id: p
+    steps:
+      - id: s
+        skill: x
+""")
+        flow = load_flow("tiny", flows_dir=flows_dir)
+        s = flow.phases[0].steps[0]
+        assert s.skip_if_validated is False
+        assert s.skip_if_artifact is None
+
+    def test_sprint_c_skip_fields_parsed(self, flows_dir):
+        _write(flows_dir / "skip.yaml", """
+id: skip
+name: Skip
+phases:
+  - id: p
+    steps:
+      - id: validate
+        skill: bmad-validate-prd
+        skip_if_validated: true
+      - id: prd
+        skill: bmad-create-prd
+        skip_if_artifact: docs/planning-artifacts/prd.md
+        ask_once: "Recreate?"
+""")
+        flow = load_flow("skip", flows_dir=flows_dir)
+        validate = flow.find_step("validate")
+        prd = flow.find_step("prd")
+        assert validate.skip_if_validated is True
+        assert validate.skip_if_artifact is None
+        assert prd.skip_if_validated is False
+        assert prd.skip_if_artifact == "docs/planning-artifacts/prd.md"
+        assert prd.ask_once == "Recreate?"
+
     def test_loop_step(self, flows_dir):
         _write(flows_dir / "loopy.yaml", """
 id: loopy
@@ -286,3 +325,15 @@ class TestProductionFlows:
         loop = flow.find_step("story-loop")
         assert loop.loop == LoopKind.PER_STORY
         assert any(s.skill == "bmad-dev-story" for s in loop.substeps)
+
+    def test_full_has_sprint_c_skip_markers(self):
+        """Sprint C: full.yaml should declare skip_if_validated on validate
+        and readiness, plus skip_if_artifact on PRD/architecture/epics."""
+        flow = load_flow("full", flows_dir=self._project_flows_dir())
+        prd = flow.find_step("prd")
+        validate = flow.find_step("validate-prd")
+        readiness = flow.find_step("readiness")
+        assert prd.skip_if_artifact == "docs/planning-artifacts/prd.md"
+        assert prd.ask_once is not None  # so user is asked, not silently skipped
+        assert validate.skip_if_validated is True
+        assert readiness.skip_if_validated is True

@@ -153,6 +153,33 @@ async def init_db(path: str = DB_PATH, default_project_dir: str = "") -> None:
         except Exception:
             pass  # column already exists
 
+        # Migration: loop_stories column added in Sprint C for per-story loop expansion.
+        # Stores a JSON array of pending story ids snapshotted on loop entry,
+        # so the runner can iterate substeps once per story.
+        try:
+            await db.execute(
+                "ALTER TABLE auto_run ADD COLUMN loop_stories TEXT NOT NULL DEFAULT '[]'"
+            )
+            logger.info("[db] init_db: added auto_run.loop_stories column")
+        except Exception:
+            pass
+
+        # Sprint C follow-up: progress tracking columns
+        try:
+            await db.execute(
+                "ALTER TABLE auto_run ADD COLUMN current_step_started_at TEXT DEFAULT NULL"
+            )
+            logger.info("[db] init_db: added auto_run.current_step_started_at column")
+        except Exception:
+            pass
+        try:
+            await db.execute(
+                "ALTER TABLE auto_run ADD COLUMN last_progress_line TEXT DEFAULT NULL"
+            )
+            logger.info("[db] init_db: added auto_run.last_progress_line column")
+        except Exception:
+            pass
+
 
 # ─── Repository functions ────────────────────────────────────────────────────
 
@@ -456,7 +483,8 @@ async def upsert_auto_run(state_row: dict, path: str = DB_PATH) -> None:
         "current_phase_idx", "current_step_idx",
         "current_substep_idx", "current_loop_iter",
         "pending_gate_step_id", "last_error", "initial_prompt",
-        "ask_once_asked", "history",
+        "current_step_started_at", "last_progress_line",
+        "ask_once_asked", "history", "loop_stories",
         "started_at", "last_active_at",
     ]
     placeholders = ",".join(["?"] * len(cols))

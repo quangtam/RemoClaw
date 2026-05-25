@@ -522,3 +522,418 @@ class TestStepTimeouts:
         runner = AutoRunner(flow, _make_state(), FakeExecutor())
         await runner.step()
         assert runner.executor.skill_calls[0]["timeout_seconds"] == 2700
+
+
+# ── Sprint C: Per-story loop expansion ────────────────────────────────
+
+
+def _make_loop_flow(*, new_session_each: bool = False) -> Flow:
+    """Build a flow with a single per-story loop containing two substeps."""
+    substeps = (
+        FlowStep(
+            id="dev", phase_id="impl", skill="bmad-dev-story",
+            gate=GateType.AUTO,
+        ),
+        FlowStep(
+            id="review", phase_id="impl", skill="bmad-code-review",
+            gate=GateType.AUTO,
+        ),
+    )
+    loop_step = FlowStep(
+        id="story-loop", phase_id="impl",
+        loop=LoopKind.PER_STORY,
+        new_session_each=new_session_each,
+        substeps=substeps,
+    )
+    phase = FlowPhase(id="impl", description="impl", steps=(loop_step,))
+    return Flow(
+        id="t", name="t", description="",
+        default_model_strategy="balanced",
+        phases=(phase,),
+    )
+
+
+class TestLoopExpansion:
+    """Per-story loop expansion: snapshot stories on entry, iterate substeps
+    once per story, advance past the loop when iterations are exhausted."""
+
+    @pytest.mark.asyncio
+    async def test_zero_pending_stories_skips_loop_entirely(self, fake_executor):
+        flow = _make_loop_flow()
+        fake_executor.pending_stories = []
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+
+        # First step() should: notice empty stories, record skip on the loop
+        # step, advance past it, and finish (no more steps in the phase).
+        await runner.step()  # loop expansion → skipped, advances past
+        await runner.step()  # nothing left, marks done
+
+        assert fake_executor.skill_calls == []
+        assert runner.state.status == STATUS_DONE
+        assert any(
+            r.step_id == "story-loop" and r.status == "skipped"
+            for r in runner.state.history
+        )
+
+    @pytest.mark.asyncio
+    async def test_one_story_runs_substeps_once(self, fake_executor):
+        flow = _make_loop_flow()
+        fake_executor.pending_stories = ["1-1-foo"]
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+
+        await runner.step()  # expands loop (no skill call this iteration)
+        await runner.step()  # dev
+        await runner.step()  # review
+        await runner.step()  # done
+
+        skills = [c["skill"] for c in fake_executor.skill_calls]
+        assert skills == ["bmad-dev-story", "bmad-code-review"]
+        assert runner.state.status == STATUS_DONE
+
+    @pytest.mark.asyncio
+    async def test_three_stories_runs_substeps_three_times(self, fake_executor):
+        flow = _make_loop_flow()
+        fake_executor.pending_stories = ["a", "b", "c"]
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+
+        # Pump until done
+        for _ in range(20):
+            status = await runner.step()
+            if status == RunStatus.DONE:
+                break
+
+        skills = [c["skill"] for c in fake_executor.skill_calls]
+        # Should be: dev, review, dev, review, dev, review (3 iterations × 2 substeps)
+        assert skills == [
+            "bmad-dev-story", "bmad-code-review",
+            "bmad-dev-story", "bmad-code-review",
+            "bmad-dev-story", "bmad-code-review",
+        ]
+        assert runner.state.status == STATUS_DONE
+
+    @pytest.mark.asyncio
+    async def test_loop_stories_persisted_in_state(self, fake_executor):
+        flow = _make_loop_flow()
+        fake_executor.pending_stories = ["s1", "s2"]
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+
+        # First step expands the loop and snapshots stories
+        await runner.step()
+        assert runner.state.loop_stories == ["s1", "s2"]
+
+        # Round-trip through SQLite serialization preserves the snapshot
+        from auto.state import AutoState
+        roundtripped = AutoState.from_db_row(runner.state.to_db_row())
+        assert roundtripped.loop_stories == ["s1", "s2"]
+
+    @pytest.mark.asyncio
+    async def test_loop_clears_stories_after_all_iterations(self, fake_executor):
+        flow = _make_loop_flow()
+        fake_executor.pending_stories = ["only"]
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+
+        # Pump to completion
+        for _ in range(10):
+            if (await runner.step()) == RunStatus.DONE:
+                break
+
+        assert runner.state.status == STATUS_DONE
+        # After loop completion, snapshot is cleared so re-entry would
+        # query the executor again.
+        assert runner.state.loop_stories == []
+
+    @pytest.mark.asyncio
+    async def test_loop_iter_resets_substep_idx_each_iteration(self, fake_executor):
+        flow = _make_loop_flow()
+        fake_executor.pending_stories = ["s1", "s2"]
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+
+        # First step expands the loop AND runs iter0/dev.
+        # Second step runs iter0/review and advances to iter1/substep0.
+        await runner.step()  # expand + iter0 dev
+        await runner.step()  # iter0 review → finishes iter, bumps to iter1
+        # At this point we should be at iter=1, substep_idx=0
+        assert runner.state.current_loop_iter == 1
+        assert runner.state.current_substep_idx == 0
+
+    @pytest.mark.asyncio
+    async def test_new_session_each_cancels_between_iterations(self, fake_executor):
+        flow = _make_loop_flow(new_session_each=True)
+        fake_executor.pending_stories = ["s1", "s2"]
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+
+        # Pump to completion
+        for _ in range(20):
+            if (await runner.step()) == RunStatus.DONE:
+                break
+
+        # Each iteration's first substep (dev) should have been called with
+        # new_session=True. The second substep (review) keeps the session.
+        new_session_per_call = [c["new_session"] for c in fake_executor.skill_calls]
+        assert new_session_per_call == [True, False, True, False]
+        # Cancel was called exactly twice — once before each iteration.
+        assert fake_executor.cancel_calls == [1, 1]
+
+    @pytest.mark.asyncio
+    async def test_no_new_session_each_keeps_single_session(self, fake_executor):
+        flow = _make_loop_flow(new_session_each=False)
+        fake_executor.pending_stories = ["s1", "s2"]
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+
+        for _ in range(20):
+            if (await runner.step()) == RunStatus.DONE:
+                break
+
+        # Without new_session_each, no substep gets a fresh session
+        new_session_per_call = [c["new_session"] for c in fake_executor.skill_calls]
+        assert new_session_per_call == [False, False, False, False]
+        assert fake_executor.cancel_calls == []
+
+
+# ── Sprint C: skip_if_validated ───────────────────────────────────────
+
+
+class TestSkipIfValidated:
+    @pytest.mark.asyncio
+    async def test_skips_step_when_validation_passed(self, fake_executor):
+        flow = _make_flow([
+            {
+                "id": "validate", "skill": "bmad-validate-prd",
+                "skip_if_validated": True,
+            },
+            {"id": "next", "skill": "after"},
+        ])
+        fake_executor.validation_passed_for.add("bmad-validate-prd")
+
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+        await runner.step()  # validate → skipped silently
+        await runner.step()  # next → runs
+        await runner.step()  # done
+
+        skills = [c["skill"] for c in fake_executor.skill_calls]
+        assert skills == ["after"]
+        assert runner.state.history[0].status == "skipped"
+        assert runner.state.history[0].step_id == "validate"
+        assert "validation already passed" in (runner.state.history[0].notes or "")
+
+    @pytest.mark.asyncio
+    async def test_runs_step_when_validation_not_passed(self, fake_executor):
+        flow = _make_flow([{
+            "id": "validate", "skill": "bmad-validate-prd",
+            "skip_if_validated": True,
+        }])
+        # validation_passed_for is empty by default → skill should run
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+        await runner.step()
+        skills = [c["skill"] for c in fake_executor.skill_calls]
+        assert skills == ["bmad-validate-prd"]
+
+    @pytest.mark.asyncio
+    async def test_validation_check_crash_falls_back_to_running(self, fake_executor):
+        """If is_validation_passed raises, we err on the side of running
+        the validator (safer than skipping a needed check)."""
+        flow = _make_flow([{
+            "id": "validate", "skill": "bmad-validate-prd",
+            "skip_if_validated": True,
+        }])
+
+        class CrashingExecutor(FakeExecutor):
+            async def is_validation_passed(self, *, thread_id, skill):
+                raise RuntimeError("disk read failed")
+
+        ex = CrashingExecutor()
+        runner = AutoRunner(flow, _make_state(), ex)
+        await runner.step()
+        assert [c["skill"] for c in ex.skill_calls] == ["bmad-validate-prd"]
+
+
+# ── Sprint C: skip_if_artifact ────────────────────────────────────────
+
+
+class TestSkipIfArtifact:
+    @pytest.mark.asyncio
+    async def test_yolo_skips_silently_when_artifact_exists(self, fake_executor):
+        flow = _make_flow([{
+            "id": "prd", "skill": "bmad-create-prd",
+            "skip_if_artifact": "docs/planning-artifacts/prd.md",
+            "ask_once": "Recreate?",
+        }])
+        fake_executor.existing_artifacts.add("docs/planning-artifacts/prd.md")
+
+        runner = AutoRunner(flow, _make_state(RunMode.YOLO), fake_executor)
+        await runner.step()
+
+        assert fake_executor.skill_calls == []
+        # No ask_once asked in yolo mode
+        assert fake_executor.ask_once_calls == []
+        assert runner.state.history[0].status == "skipped"
+
+    @pytest.mark.asyncio
+    async def test_auto_asks_user_when_artifact_exists(self, fake_executor):
+        flow = _make_flow([{
+            "id": "prd", "skill": "bmad-create-prd",
+            "skip_if_artifact": "docs/planning-artifacts/prd.md",
+            "ask_once": "PRD already exists. Recreate?",
+        }])
+        fake_executor.existing_artifacts.add("docs/planning-artifacts/prd.md")
+        fake_executor.ask_once_responses["prd"] = False  # user says skip
+
+        runner = AutoRunner(flow, _make_state(RunMode.AUTO), fake_executor)
+        await runner.step()
+
+        # User was asked exactly once
+        assert len(fake_executor.ask_once_calls) == 1
+        assert fake_executor.ask_once_calls[0]["step_id"] == "prd"
+        assert "Recreate" in fake_executor.ask_once_calls[0]["prompt"]
+        # And the skill was NOT run
+        assert fake_executor.skill_calls == []
+        assert runner.state.history[0].status == "skipped"
+
+    @pytest.mark.asyncio
+    async def test_auto_user_says_recreate_runs_step(self, fake_executor):
+        flow = _make_flow([{
+            "id": "prd", "skill": "bmad-create-prd",
+            "skip_if_artifact": "docs/planning-artifacts/prd.md",
+            "ask_once": "Recreate?",
+        }])
+        fake_executor.existing_artifacts.add("docs/planning-artifacts/prd.md")
+        fake_executor.ask_once_responses["prd"] = True  # yes, recreate
+
+        runner = AutoRunner(flow, _make_state(RunMode.AUTO), fake_executor)
+        await runner.step()
+
+        assert len(fake_executor.skill_calls) == 1
+        assert fake_executor.skill_calls[0]["skill"] == "bmad-create-prd"
+
+    @pytest.mark.asyncio
+    async def test_no_artifact_runs_step_without_asking(self, fake_executor):
+        flow = _make_flow([{
+            "id": "prd", "skill": "bmad-create-prd",
+            "skip_if_artifact": "docs/planning-artifacts/prd.md",
+            "ask_once": "Recreate?",
+        }])
+        # existing_artifacts is empty — artifact doesn't exist
+
+        runner = AutoRunner(flow, _make_state(RunMode.AUTO), fake_executor)
+        await runner.step()
+
+        # No prompt, skill ran
+        assert fake_executor.ask_once_calls == []
+        assert len(fake_executor.skill_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_auto_no_ask_once_skips_silently(self, fake_executor):
+        """In auto mode without ask_once, skip_if_artifact still skips
+        silently — same as yolo."""
+        flow = _make_flow([{
+            "id": "prd", "skill": "bmad-create-prd",
+            "skip_if_artifact": "docs/planning-artifacts/prd.md",
+        }])
+        fake_executor.existing_artifacts.add("docs/planning-artifacts/prd.md")
+
+        runner = AutoRunner(flow, _make_state(RunMode.AUTO), fake_executor)
+        await runner.step()
+
+        assert fake_executor.skill_calls == []
+        assert fake_executor.ask_once_calls == []
+        assert runner.state.history[0].status == "skipped"
+
+
+# ── Sprint C: phase-aware previous_succeeded ──────────────────────────
+
+
+class TestPreviousSucceededPhaseAware:
+    """The dependency check should look up the immediately preceding step
+    in the *current phase*, not just the last record in history."""
+
+    @pytest.mark.asyncio
+    async def test_first_step_in_phase_runs_when_history_is_unclean(self, fake_executor):
+        """The phase-aware predecessor lookup should not be confused by
+        records from earlier phases. The first step of a new phase has
+        no predecessor in that phase, so condition is treated as satisfied.
+        """
+        from auto.flow import Flow, FlowPhase
+        # p1: a is optional and user declines → skipped record ends up last
+        steps_p1 = (
+            FlowStep(
+                id="a", phase_id="p1", skill="skip-me",
+                optional=True, ask_once="?",
+            ),
+        )
+        # p2: b is first step in p2, has condition: previous_succeeded.
+        # The OLD impl would inspect history's last record (the "skipped"
+        # for `a`) and refuse to run b. The NEW impl recognizes b has no
+        # predecessor in p2 and runs.
+        steps_p2 = (
+            FlowStep(
+                id="b", phase_id="p2", skill="should-run",
+                condition="previous_succeeded",
+            ),
+        )
+        flow = Flow(
+            id="t", name="t", description="",
+            default_model_strategy="balanced",
+            phases=(
+                FlowPhase(id="p1", description="", steps=steps_p1),
+                FlowPhase(id="p2", description="", steps=steps_p2),
+            ),
+        )
+        fake_executor.ask_once_responses["a"] = False  # decline → skipped
+
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+        await runner.step()  # a → skipped (optional declined)
+        await runner.step()  # b → should run despite p1's "skipped" record
+
+        assert any(c["skill"] == "should-run" for c in fake_executor.skill_calls)
+
+    @pytest.mark.asyncio
+    async def test_skipped_predecessor_does_not_block_next(self, fake_executor):
+        # If the predecessor was deliberately skipped (optional declined),
+        # the dependent step should still run.
+        flow = _make_flow([
+            {
+                "id": "ux", "skill": "create-ux",
+                "optional": True, "ask_once": "Has UI?",
+            },
+            {
+                "id": "next", "skill": "after",
+                "condition": "previous_succeeded",
+            },
+        ])
+        fake_executor.ask_once_responses["ux"] = False  # decline → skipped
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+
+        await runner.step()  # ux → skipped
+        await runner.step()  # next → should still run despite skipped predecessor
+
+        assert any(c["skill"] == "after" for c in fake_executor.skill_calls)
+
+    @pytest.mark.asyncio
+    async def test_failed_predecessor_blocks_next(self):
+        # When the immediately preceding step failed, condition skips us.
+        flow = _make_flow([
+            {"id": "a", "skill": "first", "max_retries": 1},
+            {
+                "id": "b", "skill": "second",
+                "condition": "previous_succeeded",
+            },
+        ])
+        ex = CountingFailExecutor("first", fail_count=999)
+        runner = AutoRunner(flow, _make_state(), ex)
+
+        await runner.step()  # first fails → paused-fail
+        assert runner.state.status == STATUS_PAUSED_FAIL
+
+    @pytest.mark.asyncio
+    async def test_succeeded_predecessor_lets_next_run(self, fake_executor):
+        flow = _make_flow([
+            {"id": "a", "skill": "first"},
+            {
+                "id": "b", "skill": "second",
+                "condition": "previous_succeeded",
+            },
+        ])
+        runner = AutoRunner(flow, _make_state(), fake_executor)
+        await runner.step()  # a → success
+        await runner.step()  # b → should run
+        assert [c["skill"] for c in fake_executor.skill_calls] == ["first", "second"]

@@ -76,6 +76,14 @@ class AutoExecutor:
     db_path: str
     project_dir_resolver: object | None = None  # callable(thread_id) -> str | None
     decision_timeout: int = 86400  # 24h — autonomous runs may pause overnight
+    # Optional: AutoState reference. When set, the executor writes
+    # current_step_started_at + last_progress_line into it during long-running
+    # skill calls so /auto status can show real-time progress without waiting
+    # for the step to finish.
+    progress_state: object | None = None
+    # Persist callback: async (state_row: dict) -> None. Called when progress
+    # fields are updated, throttled to once every ~5s to avoid hammering SQLite.
+    progress_persist: object | None = None
 
     # Captured output from the most recent skill run — used by builtins like
     # 'present-summary' that summarize what happened.
@@ -141,6 +149,10 @@ class AutoExecutor:
         # Send the initial "Running" message that we'll edit as output streams
         stream_msg = await self._send_stream_header(skill, thread_id)
 
+        # Mark step start in shared state so /auto status can show elapsed time
+        from datetime import datetime, timezone
+        await self._mark_step_started(skill)
+
         # Resolve project_dir for this thread
         project_dir = None
         if self.project_dir_resolver:
@@ -151,6 +163,7 @@ class AutoExecutor:
 
         collected: list[str] = []
         last_edit = 0.0
+        last_progress_persist = 0.0
 
         try:
             async for line in self.runner_ref.execute_stream(
@@ -169,8 +182,14 @@ class AutoExecutor:
                     if now - last_edit >= _STREAM_EDIT_INTERVAL:
                         await self._edit_stream_message(stream_msg, skill, "".join(collected))
                         last_edit = now
+                    # Update last_progress_line every ~5s — cheap heartbeat
+                    # for /auto status to surface "still working, last said: …"
+                    if now - last_progress_persist >= 5.0:
+                        await self._update_progress(line)
+                        last_progress_persist = now
                 else:
                     logger.warning("[auto] unexpected DecisionPrompt during autonomous skill")
+                    await self._mark_step_finished()
                     await self._finalize_stream_message(
                         stream_msg, skill,
                         "❌ CLI asked for interactive input — auto mode can't answer",
@@ -180,14 +199,17 @@ class AutoExecutor:
                         error="CLI asked for interactive input — auto mode can't answer",
                     )
         except asyncio.CancelledError:
+            await self._mark_step_finished()
             raise
         except Exception as exc:
             logger.exception("[auto] skill %s crashed", skill)
+            await self._mark_step_finished()
             await self._finalize_stream_message(stream_msg, skill, f"💥 {exc}")
             return StepResult(success=False, error=str(exc))
 
         output = "".join(collected)
         self._last_output = output
+        await self._mark_step_finished()
 
         # Did the CLI exit with a non-zero code?
         exit_code = self.runner_ref.get_exit_code(thread_id)
@@ -523,6 +545,53 @@ class AutoExecutor:
             pass
         # Fall back to global default (config.cli_provider)
         return getattr(self.config_ref, "cli_provider", None)
+
+    async def _mark_step_started(self, skill: str) -> None:
+        """Set current_step_started_at so /auto status can show elapsed time."""
+        if self.progress_state is None or self.progress_persist is None:
+            return
+        from datetime import datetime, timezone
+        self.progress_state.current_step_started_at = datetime.now(timezone.utc).isoformat()
+        self.progress_state.last_progress_line = f"starting {skill}…"
+        try:
+            await self.progress_persist(self.progress_state.to_db_row())
+        except Exception as exc:
+            logger.debug("[auto] progress persist (start) failed: %s", exc)
+
+    async def _mark_step_finished(self) -> None:
+        """Clear current_step_started_at when step ends (success/fail/cancel)."""
+        if self.progress_state is None or self.progress_persist is None:
+            return
+        self.progress_state.current_step_started_at = None
+        self.progress_state.last_progress_line = None
+        try:
+            await self.progress_persist(self.progress_state.to_db_row())
+        except Exception as exc:
+            logger.debug("[auto] progress persist (finish) failed: %s", exc)
+
+    async def _update_progress(self, line: str) -> None:
+        """Update last_progress_line with the freshest non-empty CLI output line.
+
+        Best-effort: silenced exceptions so a slow SQLite write never blocks
+        the streaming loop.
+        """
+        if self.progress_state is None or self.progress_persist is None:
+            return
+        # Strip ANSI + spinner noise so the heartbeat is human-readable
+        try:
+            from message_utils import strip_ansi, strip_streaming_noise
+            clean = strip_streaming_noise(strip_ansi(line)).strip()
+        except Exception:
+            clean = line.strip()
+        if not clean:
+            return
+        # Take the last non-empty line — usually the most informative
+        last = clean.splitlines()[-1] if "\n" in clean else clean
+        self.progress_state.last_progress_line = last[:200]
+        try:
+            await self.progress_persist(self.progress_state.to_db_row())
+        except Exception as exc:
+            logger.debug("[auto] progress persist (update) failed: %s", exc)
 
     async def _await_decision(
         self, thread_id: int, step_id: str,

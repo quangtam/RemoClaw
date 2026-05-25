@@ -1138,6 +1138,9 @@ async def _start_auto_run(
     await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
 
     # Build executor
+    async def _persist(row: dict) -> None:
+        await db.upsert_auto_run(row, path=DB_PATH)
+
     executor = auto.AutoExecutor(
         bot=context.bot,
         chat_id=update.effective_chat.id,
@@ -1146,13 +1149,11 @@ async def _start_auto_run(
         db_ref=db,
         db_path=DB_PATH,
         project_dir_resolver=_project_dir_resolver_factory(),
+        progress_state=state,
+        progress_persist=_persist,
     )
 
     auto_runner = auto.AutoRunner(flow=flow, state=state, executor=executor)
-
-    # Start the driver
-    async def _persist(row: dict) -> None:
-        await db.upsert_auto_run(row, path=DB_PATH)
 
     async def _on_pause(s: auto.AutoState) -> None:
         from auto.state import STATUS_PAUSED_FAIL, STATUS_PAUSED_GATE
@@ -1356,6 +1357,29 @@ async def _render_auto_status(update: Update, state: "auto.AutoState") -> None:
         f"   ↳ {step_name}",
     ]
 
+    # Live progress: how long has the current step been running, and what
+    # was the most recent thing the CLI said? Only meaningful while running.
+    if state.status == "running" and state.current_step_started_at:
+        from datetime import datetime, timezone
+        try:
+            started = datetime.fromisoformat(state.current_step_started_at)
+            elapsed = datetime.now(timezone.utc) - started
+            mins, secs = divmod(int(elapsed.total_seconds()), 60)
+            hrs, mins = divmod(mins, 60)
+            if hrs:
+                elapsed_str = f"{hrs}h {mins}m"
+            else:
+                elapsed_str = f"{mins}m {secs}s"
+            lines.append(f"   ⏱ Running for {elapsed_str}")
+        except (ValueError, TypeError):
+            pass
+    if state.status == "running" and state.last_progress_line:
+        # Truncate progress line for display
+        progress = state.last_progress_line[:140]
+        if len(state.last_progress_line) > 140:
+            progress += "…"
+        lines.append(f"   💬 <i>{_escape_html(progress)}</i>")
+
     # If we're paused at a gate or fail, surface the relevant info loudly
     if state.pending_gate_step_id:
         lines.append(f"⏸ Awaiting approval for: <code>{_escape_html(state.pending_gate_step_id)}</code>")
@@ -1425,6 +1449,9 @@ async def _resume_auto_run(
     state.last_error = None
     await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
 
+    async def _persist(row: dict) -> None:
+        await db.upsert_auto_run(row, path=DB_PATH)
+
     executor = auto.AutoExecutor(
         bot=context.bot,
         chat_id=update.effective_chat.id,
@@ -1433,11 +1460,10 @@ async def _resume_auto_run(
         db_ref=db,
         db_path=DB_PATH,
         project_dir_resolver=_project_dir_resolver_factory(),
+        progress_state=state,
+        progress_persist=_persist,
     )
     auto_runner = auto.AutoRunner(flow=flow, state=state, executor=executor)
-
-    async def _persist(row: dict) -> None:
-        await db.upsert_auto_run(row, path=DB_PATH)
 
     await auto.start_run(auto_runner, persist=_persist)
     await update.message.reply_text("▶️ Resumed.")
