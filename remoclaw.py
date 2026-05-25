@@ -7,7 +7,7 @@ Features:
 - Thread-based sessions (each thread = separate conversation)
 - Model selection via /model command with inline keyboard
 - Pluggable CLI providers
-- BMAD skill routing
+- Skill command routing (bmad, wds, etc.)
 """
 
 import asyncio
@@ -181,7 +181,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "<b>Commands:</b>\n"
         "/help — Hướng dẫn sử dụng\n"
         "/model — Chọn AI model\n"
-        "/skills — Liệt kê BMAD skills\n"
+        "/skills — Liệt kê skills (bmad, wds, ...)\n"
         "/status — Kiểm tra CLI\n"
         "/cancel — Hủy lệnh đang chạy\n"
         "/new — Tạo session mới\n\n"        "<b>💡 Thread = Session:</b>\n"
@@ -236,7 +236,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/status — CLI health check\n"
         "/git — Git info (branch, log, status, diff)\n"
         "/voice — Toggle voice output (/voice status for config)\n"
-        "/skills — List BMAD workflows\n"
+        "/skills — List installed skills (bmad, wds, ...)\n"
         "/help — This message\n\n"
 
         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -356,36 +356,78 @@ async def handle_model_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 @authorized
 async def cmd_skills(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /skills — list available BMAD skills."""
-    skills_dir = Path(config.project_dir) / ".kiro" / "skills"
+    """Handle /skills — list available skills in .kiro/skills/.
+
+    Lists ALL skill subdirectories regardless of prefix (bmad-, wds-, etc.)
+    and groups them by their prefix family.
+    """
+    # Resolve per-thread project directory
+    thread_id = _get_thread_id(update) or DEFAULT_THREAD_ID
+    try:
+        tc = await db.get_thread_config(thread_id, path=DB_PATH)
+        project_dir = (tc.project_dir if tc else None) or config.project_dir
+    except Exception:
+        project_dir = config.project_dir
+
+    skills_dir = Path(project_dir) / ".kiro" / "skills"
     if not skills_dir.is_dir():
-        await update.message.reply_text("⚠️ No .kiro/skills/ directory found in project.")
+        await update.message.reply_text(
+            f"⚠️ No <code>.kiro/skills/</code> directory found in:\n"
+            f"<code>{_escape_html(project_dir)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
         return
 
-    bmad_skills = sorted(
-        d.name for d in skills_dir.iterdir()
-        if d.is_dir() and d.name.startswith("bmad-")
-    )
+    all_skills = sorted(d.name for d in skills_dir.iterdir() if d.is_dir())
 
-    if not bmad_skills:
-        await update.message.reply_text("⚠️ No BMAD skills found.")
+    if not all_skills:
+        await update.message.reply_text("⚠️ No skills found in .kiro/skills/")
         return
 
-    agents = [s for s in bmad_skills if "agent-" in s]
-    workflows = [s for s in bmad_skills if s not in agents]
+    # Group skills by prefix family (text before first '-')
+    families: dict[str, list[str]] = {}
+    for skill in all_skills:
+        family = skill.split("-", 1)[0] if "-" in skill else skill
+        families.setdefault(family, []).append(skill)
 
-    lines = ["🧠 <b>BMAD Skills Available</b>\n"]
-    if workflows:
-        lines.append("<b>Workflows:</b>")
-        for skill in workflows:
-            lines.append(f"  <code>/{skill}</code>")
-    if agents:
-        lines.append("\n<b>Agents:</b>")
-        for skill in agents:
-            lines.append(f"  <code>/{skill}</code>")
-    lines.append(f"\n📊 Total: {len(bmad_skills)} skills")
+    lines = [f"🧠 <b>Skills Available</b>  ({len(all_skills)} total)\n"]
 
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    for family in sorted(families.keys()):
+        skills_in_family = families[family]
+        # Split into agents vs workflows for visual clarity
+        agents = [s for s in skills_in_family if "agent-" in s]
+        workflows = [s for s in skills_in_family if s not in agents]
+
+        lines.append(f"<b>{_escape_html(family.upper())}</b> ({len(skills_in_family)})")
+        if workflows:
+            for skill in workflows:
+                lines.append(f"  <code>/{skill}</code>")
+        if agents:
+            for skill in agents:
+                lines.append(f"  🧑‍💼 <code>/{skill}</code>")
+        lines.append("")  # spacer between families
+
+    text = "\n".join(lines).rstrip()
+
+    # Telegram message limit is 4096 chars; chunk if needed
+    if len(text) <= 4000:
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        return
+
+    # Send each family as a separate message to stay under limit
+    chunks: list[str] = []
+    current = lines[0] + "\n"  # header
+    for line in lines[1:]:
+        if len(current) + len(line) + 1 > 4000:
+            chunks.append(current.rstrip())
+            current = line + "\n"
+        else:
+            current += line + "\n"
+    if current.strip():
+        chunks.append(current.rstrip())
+
+    for chunk in chunks:
+        await update.message.reply_text(chunk, parse_mode=ParseMode.HTML)
 
 
 @authorized
@@ -1028,19 +1070,31 @@ async def cmd_provider(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     logger.info("[cmd_provider] thread=%s → %s", thread_id, name)
 
 
-# ── BMAD Slash Command Handler ───────────────────────────────────
+# ── Skill Slash Command Handler ───────────────────────────────────
 
 @authorized
-async def handle_bmad_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /bmad_* commands → forward as CLI slash commands."""
+async def handle_skill_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle slash commands that look like skill invocations.
+
+    Forwards any /<family>_<skill_name> command to the CLI as
+    /<family>-<skill_name> (Telegram uses underscores, skills use dashes).
+
+    Matches any skill family present in .kiro/skills/ — bmad, wds, or any
+    other prefix the user has installed.
+    """
     text = update.message.text.strip()
     command = text.split()[0]
     extra = text[len(command):].strip()
 
-    kiro_command = command.replace("_", "-")
-    prompt = kiro_command if not extra else f"{kiro_command} {extra}"
+    # Convert /bmad_create-prd → bmad-create-prd
+    skill_command = command.lstrip("/").replace("_", "-")
+    prompt = skill_command if not extra else f"{skill_command} {extra}"
 
     await _execute_and_reply(update, context, prompt)
+
+
+# Backward-compat alias — old name kept so existing imports still work
+handle_bmad_command = handle_skill_command
 
 
 # ── Git Commands (direct, no CLI proxy) ──────────────────────────
@@ -2206,10 +2260,12 @@ def main() -> None:
     # Voice message handler (Story 6.1)
     app.add_handler(MessageHandler(filters.VOICE, handle_voice_message))
 
-    # BMAD slash commands
+    # Skill commands — forward /<family>_<name> to CLI as /<family>-<name>
+    # Matches any prefix family (bmad, wds, etc.) since users may install
+    # any skill ecosystem. Pattern: /<word>_<word>(-<word>)*
     app.add_handler(MessageHandler(
-        filters.Regex(r"^/bmad_\w+"),
-        handle_bmad_command,
+        filters.Regex(r"^/[a-zA-Z][a-zA-Z0-9]*_[a-zA-Z0-9_-]+"),
+        handle_skill_command,
     ))
 
     # Free-form messages (must be last)
@@ -2237,7 +2293,7 @@ def main() -> None:
             BotCommand("voice", "Toggle voice output"),
             BotCommand("git", "Git info"),
             BotCommand("status", "CLI health check"),
-            BotCommand("skills", "List BMAD workflows"),
+            BotCommand("skills", "List installed skills"),
         ]
         await app_.bot.set_my_commands(commands)
         await app_.bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
