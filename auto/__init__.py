@@ -19,8 +19,10 @@ from auto.executor import (
     AutoExecutor,
     has_pending_decision,
     resolve_pending_decision,
+    resolve_pending_party_decision,
 )
 from auto.flow import Flow, FlowStep, GateType, RunMode, list_available_flows, load_flow
+from auto.party import PartyModeResult, count_rounds, detect_consensus
 from auto.runner import AutoRunner, RunStatus
 from auto.state import AutoState
 
@@ -31,13 +33,17 @@ __all__ = [
     "Flow",
     "FlowStep",
     "GateType",
+    "PartyModeResult",
     "RunMode",
     "RunStatus",
+    "count_rounds",
+    "detect_consensus",
     "has_pending_decision",
     "is_driver_active",
     "list_available_flows",
     "load_flow",
     "resolve_pending_decision",
+    "resolve_pending_party_decision",
     "start_run",
     "stop_driver",
 ]

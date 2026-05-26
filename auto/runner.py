@@ -26,6 +26,7 @@ from enum import Enum
 from typing import Protocol
 
 from auto.flow import Flow, FlowStep, GateType, RunMode
+from auto.party import PartyModeResult
 from auto.state import (
     STATUS_ABORTED,
     STATUS_DONE,
@@ -105,8 +106,30 @@ class Executor(Protocol):
     async def run_party_mode(
         self, *, thread_id: int, context: str, min_rounds: int,
         timeout_seconds: int | None = None,
-    ) -> int:
-        """Run party-mode discussion. Returns the number of rounds executed."""
+    ) -> PartyModeResult:
+        """Run party-mode discussion.
+
+        Streams the bmad-party-mode skill output, counts rounds, and detects
+        consensus. Returns a `PartyModeResult` with the actual rounds
+        observed (floored at `min_rounds`), whether consensus was reached,
+        and the extracted summary.
+
+        On crash: returns `PartyModeResult(rounds=0, consensus=False)` so
+        the runner can record the step as successful-but-degraded and
+        continue past the gate.
+        """
+
+    async def notify_party_yolo_accept(
+        self, *, thread_id: int, summary: str,
+    ) -> None:
+        """In YOLO mode, send a non-interactive notice that consensus was
+        auto-accepted. Best-effort; never raises."""
+
+    async def present_party_consensus_gate(
+        self, *, thread_id: int, step_id: str, summary: str,
+    ) -> None:
+        """In AUTO mode, send the inline-keyboard gate so the user can
+        Accept / request More Rounds / Override the consensus."""
 
     async def ask_once(
         self, *, thread_id: int, step: FlowStep, prompt: str,
@@ -302,14 +325,26 @@ class AutoRunner:
 
         # ── Findings → party-mode divert ─────────────────────────
         rounds = 0
+        party_result: PartyModeResult | None = None
         if result.findings and current.on_findings == "party-mode":
             min_rounds = 2
-            rounds = await self.executor.run_party_mode(
-                thread_id=self.state.thread_id,
-                context=result.notes or f"findings from {current.id}",
-                min_rounds=min_rounds,
-                timeout_seconds=self.flow.default_step_timeout_seconds,
-            )
+            party_context = result.notes or f"findings from {current.id}"
+            try:
+                party_result = await self.executor.run_party_mode(
+                    thread_id=self.state.thread_id,
+                    context=party_context,
+                    min_rounds=min_rounds,
+                    timeout_seconds=self.flow.default_step_timeout_seconds,
+                )
+            except Exception as exc:
+                # Party-mode crash is non-fatal — degrade gracefully so
+                # the rest of the flow continues past the gate.
+                logger.warning("[auto] run_party_mode raised: %s", exc)
+                party_result = PartyModeResult(rounds=0, consensus=False)
+            rounds = party_result.rounds
+            # Stash context so the "More Rounds" callback can re-trigger
+            # party-mode without re-deriving it.
+            self.state.last_party_context = party_context
 
         # ── Success — record and apply gate ──────────────────────
         self._record(
@@ -317,6 +352,43 @@ class AutoRunner:
             findings=result.findings, party_mode_rounds=rounds,
             notes=result.notes,
         )
+
+        # ── Party-mode consensus → mode-appropriate gate ─────────
+        if party_result is not None and party_result.consensus:
+            if self.state.mode == RunMode.YOLO:
+                # Auto-accept and continue. Best-effort notify; failures
+                # in the executor's UX layer must not block the run.
+                try:
+                    await self.executor.notify_party_yolo_accept(
+                        thread_id=self.state.thread_id,
+                        summary=party_result.consensus_summary,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "[auto] notify_party_yolo_accept failed: %s", exc,
+                    )
+                # Clear the stashed context — YOLO doesn't allow re-runs.
+                self.state.last_party_context = None
+            else:
+                # AUTO mode → present gate keyboard, pause the run.
+                try:
+                    await self.executor.present_party_consensus_gate(
+                        thread_id=self.state.thread_id,
+                        step_id=current.id,
+                        summary=party_result.consensus_summary,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "[auto] present_party_consensus_gate failed: %s", exc,
+                    )
+                self.state.status = STATUS_PAUSED_PARTY
+                self.state.pending_gate_step_id = current.id
+                return RunStatus.PAUSED
+
+        # No consensus path — clear any stale context so future steps
+        # don't accidentally re-use it.
+        if party_result is not None and not party_result.consensus:
+            self.state.last_party_context = None
 
         gate_action = self._evaluate_gate(current, result)
         if gate_action == "pause":

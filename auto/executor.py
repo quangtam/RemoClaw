@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from auto.findings import extract_findings_summary, has_findings
+from auto.party import PartyModeResult, count_rounds, detect_consensus
 
 if TYPE_CHECKING:
     from auto.flow import FlowStep
@@ -43,6 +44,10 @@ _STREAM_PREVIEW_TAIL = 1500
 # and awaited by AutoExecutor.ask_human_review / ask_once.
 _pending_user_decisions: dict[tuple[int, str], asyncio.Future[bool]] = {}
 
+# Separate dict for party-mode 3-way decisions (accept / more / abort).
+# Awaited by callbacks in remoclaw.py — see resolve_pending_party_decision.
+_pending_party_decisions: dict[tuple[int, str], asyncio.Future[str]] = {}
+
 
 def resolve_pending_decision(
     thread_id: int, step_id: str, *, approved: bool,
@@ -57,6 +62,22 @@ def resolve_pending_decision(
     if fut is None or fut.done():
         return False
     fut.set_result(approved)
+    return True
+
+
+def resolve_pending_party_decision(
+    thread_id: int, step_id: str, *, choice: str,
+) -> bool:
+    """Resolve a pending party-mode consensus decision.
+
+    `choice` is one of 'accept' | 'more' | 'abort'. Returns True if a
+    pending decision was resolved.
+    """
+    key = (thread_id, step_id)
+    fut = _pending_party_decisions.pop(key, None)
+    if fut is None or fut.done():
+        return False
+    fut.set_result(choice)
     return True
 
 
@@ -347,13 +368,18 @@ class AutoExecutor:
     async def run_party_mode(
         self, *, thread_id: int, context: str, min_rounds: int,
         timeout_seconds: int | None = None,
-    ) -> int:
+    ) -> PartyModeResult:
         """Trigger party-mode discussion via the bmad-party-mode skill.
 
-        The skill itself orchestrates the rounds. We just kick it off with
-        the findings as input, stream the output back, and trust the skill
-        to do its thing. Returns the number of rounds executed (best-effort
-        — for now we trust the skill to honor min_rounds).
+        Streams the skill output to Telegram with a live round counter in
+        the message header, then runs `count_rounds` and `detect_consensus`
+        against the full transcript. Returns a `PartyModeResult` with the
+        actual rounds detected (floored at `min_rounds`), whether consensus
+        was reached, and the extracted summary.
+
+        Crashes are caught and converted to `PartyModeResult(rounds=0,
+        consensus=False)` so the runner can record the step as
+        successful-but-degraded and continue past the gate.
         """
         prompt = (
             f"bmad-party-mode\n\n"
@@ -362,11 +388,12 @@ class AutoExecutor:
             f"---\n{context}\n---"
         )
 
-        # Use the same streaming path as run_skill so users see the debate
+        # Use the same streaming path as run_skill so users see the debate.
         stream_msg = await self._send_stream_header("bmad-party-mode", thread_id)
 
         collected: list[str] = []
         last_edit = 0.0
+        last_round_in_header = 0
         import time
 
         try:
@@ -381,8 +408,15 @@ class AutoExecutor:
                 collected.append(line)
                 now = time.monotonic()
                 if now - last_edit >= _STREAM_EDIT_INTERVAL:
-                    await self._edit_stream_message(
-                        stream_msg, "bmad-party-mode", "".join(collected),
+                    so_far = "".join(collected)
+                    # Re-detect rounds on each edit so the header tracks
+                    # progress live. count_rounds is cheap (single regex
+                    # pass) and the streaming loop is not hot-spot critical.
+                    detected = count_rounds(so_far)
+                    if detected > last_round_in_header:
+                        last_round_in_header = detected
+                    await self._edit_party_stream_message(
+                        stream_msg, so_far, last_round_in_header,
                     )
                     last_edit = now
         except asyncio.CancelledError:
@@ -393,14 +427,146 @@ class AutoExecutor:
                 stream_msg, "bmad-party-mode",
                 f"❌ Party-mode crashed: {exc}",
             )
-            return 0
+            return PartyModeResult(rounds=0, consensus=False)
 
         output = "".join(collected)
+        rounds = count_rounds(output, min_rounds=min_rounds)
+        consensus, summary = detect_consensus(output, rounds_completed=rounds)
+
+        status_line = (
+            f"✅ {rounds} rounds — consensus reached"
+            if consensus
+            else f"✅ {rounds} rounds — no consensus"
+        )
         await self._finalize_stream_message(
             stream_msg, "bmad-party-mode",
-            f"✅ {min_rounds}+ rounds complete\n\n{_truncate(output, 1200)}",
+            f"{status_line}\n\n{_truncate(output, 1200)}",
         )
-        return min_rounds
+
+        return PartyModeResult(
+            rounds=rounds,
+            consensus=consensus,
+            consensus_summary=summary,
+        )
+
+    async def notify_party_yolo_accept(
+        self, *, thread_id: int, summary: str,
+    ) -> None:
+        """Send the YOLO-mode auto-accept notification message."""
+        from html import escape
+
+        body = escape(summary).strip() if summary else ""
+        if body:
+            text = (
+                "🤝 <b>Party-mode consensus reached</b> "
+                "<i>(auto-accepted in yolo mode)</i>\n\n"
+                f"<i>{body}</i>"
+            )
+        else:
+            text = (
+                "🤝 <b>Party-mode consensus reached</b> "
+                "<i>(auto-accepted in yolo mode)</i>"
+            )
+        await self._notify(text, thread_id)
+
+    async def present_party_consensus_gate(
+        self, *, thread_id: int, step_id: str, summary: str,
+    ) -> None:
+        """Send the AUTO-mode party-mode consensus gate keyboard."""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from html import escape
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(
+                "✅ Accept & Continue",
+                callback_data=f"auto:party-accept:{step_id}",
+            )],
+            [InlineKeyboardButton(
+                "🔄 More Rounds",
+                callback_data=f"auto:party-more:{step_id}",
+            )],
+            [InlineKeyboardButton(
+                "✋ Override & Abort",
+                callback_data=f"auto:party-abort:{step_id}",
+            )],
+        ])
+
+        body = escape(summary).strip() if summary else ""
+        if body:
+            text = (
+                "🤝 <b>Party-mode consensus</b>\n"
+                f"<i>{body}</i>\n\n"
+                "Pick one to continue, request another round, or override."
+            )
+        else:
+            text = (
+                "🤝 <b>Party-mode consensus</b>\n"
+                "Pick one to continue, request another round, or override."
+            )
+        await self._send_with_keyboard(text, keyboard, thread_id)
+
+    async def await_party_decision(
+        self, *, thread_id: int, step_id: str,
+        timeout_seconds: int | None = None,
+    ) -> str:
+        """Wait for the user to click an `auto:party-*` button.
+
+        Returns 'accept' | 'more' | 'abort'. On timeout, returns 'abort'
+        so the run halts cleanly rather than dangling.
+
+        Currently unused by the runner — the gate keyboard flow is driven
+        by the callback handler in remoclaw.py — but exposed here for
+        future direct-await callers and tests.
+        """
+        loop = asyncio.get_event_loop()
+        fut: asyncio.Future[str] = loop.create_future()
+        key = (thread_id, step_id)
+        _pending_party_decisions[key] = fut
+
+        wait_seconds = timeout_seconds or self.decision_timeout
+        try:
+            return await asyncio.wait_for(fut, timeout=wait_seconds)
+        except asyncio.TimeoutError:
+            _pending_party_decisions.pop(key, None)
+            await self._notify(
+                f"⏱ Party-mode decision timeout after "
+                f"{wait_seconds // 60} min — aborting",
+                thread_id,
+            )
+            return "abort"
+
+    async def _edit_party_stream_message(
+        self, msg, output_so_far: str, current_round: int,
+    ) -> None:
+        """Stream-edit variant that puts the live round count in the header."""
+        if msg is None:
+            return
+        from html import escape
+        try:
+            from message_utils import strip_ansi, strip_streaming_noise
+        except ImportError:
+            strip_ansi = lambda s: s
+            strip_streaming_noise = lambda s: s
+
+        clean = strip_streaming_noise(strip_ansi(output_so_far))
+        tail = clean[-_STREAM_PREVIEW_TAIL:].strip()
+        if len(clean) > _STREAM_PREVIEW_TAIL:
+            tail = f"…\n{tail}"
+
+        round_label = (
+            f" (Round {current_round})" if current_round > 0 else ""
+        )
+        text = (
+            f"⚙️ <b>Running</b> <code>bmad-party-mode</code>{escape(round_label)}\n"
+            f"<pre>{escape(tail) or '(starting…)'}</pre>"
+        )
+        if len(text) > _TELEGRAM_MSG_CAP:
+            text = text[:_TELEGRAM_MSG_CAP] + "…</pre>"
+
+        try:
+            await msg.edit_text(text, parse_mode="HTML")
+        except Exception as exc:
+            logger.debug("[auto] party stream edit skipped: %s", exc)
 
     async def list_pending_stories(self, *, thread_id: int) -> list[str]:
         """Read sprint-status.yaml to find stories that still need work.

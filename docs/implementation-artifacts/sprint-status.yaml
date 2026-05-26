@@ -14,13 +14,14 @@
 #   done           — all stories complete
 
 project: Chati v2.0
-last_updated: 2026-05-08
+last_updated: 2026-05-26
 # 2026-05-08: 6-3-voice-configuration → in-progress
 # 2026-05-08: 6-1-voice-input-whisper → in-progress
 # 2026-05-08: 6-1-voice-input-whisper → review
 # 2026-05-08: 6-2-voice-output-tts → in-progress
 # 2026-05-08: 6-2-voice-output-tts → review
 # 2026-05-08: 6-3-voice-configuration → review
+# 2026-05-26: 7-1-party-mode-streaming → in-progress
 
 development_status:
   # Epic 0: Test Infrastructure (Foundation)
@@ -69,3 +70,9 @@ development_status:
   6-1-voice-input-whisper: done
   6-2-voice-output-tts: done
   6-3-voice-configuration: done
+
+  # Epic 7: Autonomous Mode — Party-Mode Integration (Sprint D)
+  epic-7: in-progress
+  7-1-party-mode-streaming: in-progress
+  7-2-consensus-detection: ready-for-dev
+  7-3-party-mode-gate-ux: backlog

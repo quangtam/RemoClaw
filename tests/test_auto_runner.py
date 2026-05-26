@@ -44,6 +44,13 @@ class FakeExecutor:
         self.skill_calls: list[dict] = []
         self.builtin_calls: list[dict] = []
         self.party_mode_calls: list[dict] = []
+        # Optional override: when set, run_party_mode returns this PartyModeResult
+        # instead of the default PartyModeResult(rounds=min_rounds, consensus=False).
+        # If set to an Exception instance, run_party_mode raises it (for crash tests).
+        self.party_mode_result = None  # type: ignore[var-annotated]
+        # Track party-mode UX calls (Sprint D — story 7.1)
+        self.party_yolo_accepts: list[dict] = []
+        self.party_gate_presents: list[dict] = []
         self.ask_once_calls: list[dict] = []
         self.ask_once_responses: dict[str, bool] = {}  # step_id → answer
         # Sprint C: pending stories for loop expansion + artifact checks
@@ -76,10 +83,28 @@ class FakeExecutor:
         return True
 
     async def run_party_mode(self, *, thread_id, context, min_rounds, timeout_seconds=None):
+        from auto.party import PartyModeResult
         self.party_mode_calls.append({
             "thread_id": thread_id, "context": context, "min_rounds": min_rounds,
         })
-        return min_rounds
+        # Crash injection: setting party_mode_result to an Exception triggers raise
+        if isinstance(self.party_mode_result, BaseException):
+            raise self.party_mode_result
+        if isinstance(self.party_mode_result, PartyModeResult):
+            return self.party_mode_result
+        return PartyModeResult(rounds=min_rounds, consensus=False)
+
+    async def notify_party_yolo_accept(self, *, thread_id, summary):
+        # Sprint D: YOLO mode auto-accept notification
+        self.party_yolo_accepts.append({
+            "thread_id": thread_id, "summary": summary,
+        })
+
+    async def present_party_consensus_gate(self, *, thread_id, step_id, summary):
+        # Sprint D: AUTO mode consensus gate (inline-keyboard 3-way pick)
+        self.party_gate_presents.append({
+            "thread_id": thread_id, "step_id": step_id, "summary": summary,
+        })
 
     async def ask_once(self, *, thread_id, step, prompt, timeout_seconds=None):
         self.ask_once_calls.append({

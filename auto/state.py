@@ -109,6 +109,10 @@ class AutoState:
     # Empty list means: loop not yet entered, OR no pending stories so loop
     # was skipped. Cleared when the loop step is fully consumed.
     loop_stories: list[str] = field(default_factory=list)
+    # When paused at a party-mode consensus gate, the original findings
+    # context is stashed here so a "More Rounds" callback can re-trigger
+    # `run_party_mode` with the same input. Cleared on accept/abort.
+    last_party_context: str | None = None
     started_at: str | None = None
     last_active_at: str | None = None
 
@@ -131,6 +135,7 @@ class AutoState:
             "ask_once_asked": json.dumps(sorted(self.ask_once_asked)),
             "history": json.dumps([r.to_dict() for r in self.history]),
             "loop_stories": json.dumps(self.loop_stories),
+            "last_party_context": self.last_party_context,
             "started_at": self.started_at,
             "last_active_at": self.last_active_at,
         }
@@ -171,6 +176,7 @@ class AutoState:
             ask_once_asked=ask_once,
             history=history,
             loop_stories=loop_stories,
+            last_party_context=row.get("last_party_context"),
             started_at=row.get("started_at"),
             last_active_at=row.get("last_active_at"),
         )

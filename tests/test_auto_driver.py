@@ -34,7 +34,8 @@ class FakeExecutor:
         return True
 
     async def run_party_mode(self, *, thread_id, context, min_rounds, timeout_seconds=None):
-        return min_rounds
+        from auto.party import PartyModeResult
+        return PartyModeResult(rounds=min_rounds, consensus=False)
 
     async def ask_once(self, *, thread_id, step, prompt, timeout_seconds=None):
         return True

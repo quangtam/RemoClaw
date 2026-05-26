@@ -180,6 +180,15 @@ async def init_db(path: str = DB_PATH, default_project_dir: str = "") -> None:
         except Exception:
             pass
 
+        # Sprint D: party-mode context stash for "More Rounds" callback re-runs.
+        try:
+            await db.execute(
+                "ALTER TABLE auto_run ADD COLUMN last_party_context TEXT DEFAULT NULL"
+            )
+            logger.info("[db] init_db: added auto_run.last_party_context column")
+        except Exception:
+            pass
+
 
 # ─── Repository functions ────────────────────────────────────────────────────
 
@@ -485,6 +494,7 @@ async def upsert_auto_run(state_row: dict, path: str = DB_PATH) -> None:
         "pending_gate_step_id", "last_error", "initial_prompt",
         "current_step_started_at", "last_progress_line",
         "ask_once_asked", "history", "loop_stories",
+        "last_party_context",
         "started_at", "last_active_at",
     ]
     placeholders = ",".join(["?"] * len(cols))
@@ -509,3 +519,11 @@ async def delete_auto_run(thread_id: int, path: str = DB_PATH) -> None:
             (thread_id,),
         )
     logger.debug("[db] delete_auto_run: thread_id=%s", thread_id)
+
+
+async def list_auto_runs(path: str = DB_PATH) -> list[dict]:
+    """Return all auto_run rows as plain dicts. Used for orphan detection on startup."""
+    async with get_db(path) as db:
+        cursor = await db.execute("SELECT * FROM auto_run")
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows] if rows else []

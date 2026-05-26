@@ -1156,10 +1156,72 @@ async def _start_auto_run(
     auto_runner = auto.AutoRunner(flow=flow, state=state, executor=executor)
 
     async def _on_pause(s: auto.AutoState) -> None:
-        from auto.state import STATUS_PAUSED_FAIL, STATUS_PAUSED_GATE
+        from auto.state import STATUS_PAUSED_FAIL, STATUS_PAUSED_GATE, STATUS_PAUSED_PARTY
         if s.status == STATUS_PAUSED_GATE and s.pending_gate_step_id:
-            # ask_human_review already sent the keyboard via Executor
-            pass
+            # Build rich context message so user knows WHAT they're approving
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            step_id = s.pending_gate_step_id
+
+            # Resolve human-readable phase + step info from the flow
+            phase_label = ""
+            step_description = ""
+            try:
+                flows_dir = await _resolve_flows_dir(s.thread_id)
+                f = auto.load_flow(s.flow_id, flows_dir=flows_dir)
+                if s.current_phase_idx < len(f.phases):
+                    phase = f.phases[s.current_phase_idx]
+                    phase_label = phase.description or phase.id
+            except Exception:
+                pass
+
+            # Get the last step record for context (what just ran + its output summary)
+            last_record = None
+            for rec in reversed(s.history):
+                if rec.step_id == step_id and rec.status == "success":
+                    last_record = rec
+                    break
+
+            # Build the message
+            lines = [f"⏸ <b>Review needed — approve to continue</b>"]
+            lines.append("")
+            if phase_label:
+                lines.append(f"📍 Phase: <b>{_escape_html(phase_label)}</b>")
+            lines.append(f"🔧 Step: <code>{_escape_html(step_id)}</code>")
+            if last_record and last_record.skill:
+                lines.append(f"🤖 Skill: <code>{_escape_html(last_record.skill)}</code>")
+            if last_record and last_record.findings:
+                lines.append(f"⚠️ Findings detected — party-mode ran {last_record.party_mode_rounds} round(s)")
+
+            # Show output summary (truncated)
+            if last_record and last_record.notes:
+                summary = last_record.notes[:600]
+                if len(last_record.notes) > 600:
+                    summary += "…"
+                lines.append("")
+                lines.append(f"<b>Output summary:</b>")
+                lines.append(f"<pre>{_escape_html(summary)}</pre>")
+
+            lines.append("")
+            lines.append("What would you like to do?")
+
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ Approve & Continue", callback_data=f"auto:approve:{step_id}"),
+                ],
+                [
+                    InlineKeyboardButton("⏭️ Skip Step", callback_data=f"auto:skip:{step_id}"),
+                    InlineKeyboardButton("❌ Abort Run", callback_data=f"auto:abort:{step_id}"),
+                ],
+            ])
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                message_thread_id=thread_id if thread_id != DEFAULT_THREAD_ID else None,
+                text="\n".join(lines),
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard,
+            )
+        elif s.status == STATUS_PAUSED_PARTY:
+            pass  # Party-mode gate keyboard is sent by the executor inline
         elif s.status == STATUS_PAUSED_FAIL:
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -1289,6 +1351,16 @@ async def _handle_auto_subcommand(
 
     if sub == "resume":
         if not state.is_paused():
+            # Check for orphaned "running" state — driver died (network loss,
+            # bot restart, crash) but state wasn't updated to paused/done.
+            # If status is "running" but no driver task is alive, treat it as
+            # resumable so the user isn't stuck.
+            if state.status == "running" and not auto.is_driver_active(thread_id):
+                await update.message.reply_text(
+                    "⚠️ Run was interrupted (driver not active). Resuming from last checkpoint…",
+                )
+                await _resume_auto_run(update, context, state)
+                return
             await update.message.reply_text(
                 f"ℹ️ Run is not paused (status: <code>{state.status}</code>).",
                 parse_mode=ParseMode.HTML,
@@ -1444,11 +1516,6 @@ async def _resume_auto_run(
         )
         return
 
-    # Clear pause and resume
-    state.status = "running"
-    state.last_error = None
-    await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
-
     async def _persist(row: dict) -> None:
         await db.upsert_auto_run(row, path=DB_PATH)
 
@@ -1465,7 +1532,100 @@ async def _resume_auto_run(
     )
     auto_runner = auto.AutoRunner(flow=flow, state=state, executor=executor)
 
-    await auto.start_run(auto_runner, persist=_persist)
+    # IMPORTANT: advance past the gate-paused step before the driver starts
+    # pumping, otherwise the very next step() will re-execute the already-
+    # completed step (state is still at current_step_idx). runner.resume()
+    # clears the pause and calls _advance() in the gate-paused/party-paused
+    # cases. For paused-fail it just clears the error so retry happens.
+    await auto_runner.resume(approve=True)
+    await _persist(state.to_db_row())
+
+    chat_id = update.effective_chat.id
+    msg_thread_id = thread_id if thread_id != DEFAULT_THREAD_ID else None
+
+    async def _on_pause(s: auto.AutoState) -> None:
+        from auto.state import STATUS_PAUSED_FAIL, STATUS_PAUSED_GATE, STATUS_PAUSED_PARTY
+        if s.status == STATUS_PAUSED_GATE and s.pending_gate_step_id:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            step_id = s.pending_gate_step_id
+
+            # Resolve context for the gate message
+            phase_label = ""
+            try:
+                if s.current_phase_idx < len(flow.phases):
+                    phase = flow.phases[s.current_phase_idx]
+                    phase_label = phase.description or phase.id
+            except Exception:
+                pass
+
+            last_record = None
+            for rec in reversed(s.history):
+                if rec.step_id == step_id and rec.status == "success":
+                    last_record = rec
+                    break
+
+            lines = [f"⏸ <b>Review needed — approve to continue</b>"]
+            lines.append("")
+            if phase_label:
+                lines.append(f"📍 Phase: <b>{_escape_html(phase_label)}</b>")
+            lines.append(f"🔧 Step: <code>{_escape_html(step_id)}</code>")
+            if last_record and last_record.skill:
+                lines.append(f"🤖 Skill: <code>{_escape_html(last_record.skill)}</code>")
+            if last_record and last_record.findings:
+                lines.append(f"⚠️ Findings detected — party-mode ran {last_record.party_mode_rounds} round(s)")
+            if last_record and last_record.notes:
+                summary = last_record.notes[:600]
+                if len(last_record.notes) > 600:
+                    summary += "…"
+                lines.append("")
+                lines.append(f"<b>Output summary:</b>")
+                lines.append(f"<pre>{_escape_html(summary)}</pre>")
+            lines.append("")
+            lines.append("What would you like to do?")
+
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ Approve & Continue", callback_data=f"auto:approve:{step_id}"),
+                ],
+                [
+                    InlineKeyboardButton("⏭️ Skip Step", callback_data=f"auto:skip:{step_id}"),
+                    InlineKeyboardButton("❌ Abort Run", callback_data=f"auto:abort:{step_id}"),
+                ],
+            ])
+            await context.bot.send_message(
+                chat_id=chat_id,
+                message_thread_id=msg_thread_id,
+                text="\n".join(lines),
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard,
+            )
+        elif s.status == STATUS_PAUSED_PARTY:
+            pass  # Party-mode gate keyboard sent by executor inline
+        elif s.status == STATUS_PAUSED_FAIL:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                message_thread_id=msg_thread_id,
+                text=(
+                    f"❌ <b>Run paused — step failed</b>\n"
+                    f"Error: <code>{_escape_html(s.last_error or 'unknown')}</code>\n\n"
+                    f"Use <code>/auto resume</code> to retry, "
+                    f"or <code>/auto abort</code> to cancel."
+                ),
+                parse_mode=ParseMode.HTML,
+            )
+
+    async def _on_error(exc: Exception) -> None:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            message_thread_id=msg_thread_id,
+            text=f"💥 Driver crashed: <code>{_escape_html(str(exc))}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    await auto.start_run(
+        auto_runner, persist=_persist,
+        on_pause=_on_pause, on_error=_on_error,
+    )
     await update.message.reply_text("▶️ Resumed.")
 
 
@@ -1497,9 +1657,15 @@ async def _skip_current_step(
 
 @authorized
 async def handle_auto_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Inline-keyboard callback for gate approve/abort buttons.
+    """Inline-keyboard callback for /auto gate buttons.
 
-    Callback data format: 'auto:<action>:<step_id>' where action ∈ {approve, abort}.
+    Callback data formats:
+      - 'auto:approve:<step_id>'        — human-review gate approve
+      - 'auto:skip:<step_id>'           — skip this step, continue run
+      - 'auto:abort:<step_id>'          — abort the entire run
+      - 'auto:party-accept:<step_id>'   — party-mode consensus accepted
+      - 'auto:party-more:<step_id>'     — request more party-mode rounds
+      - 'auto:party-abort:<step_id>'    — override party-mode (abort run)
     """
     query = update.callback_query
     await query.answer()
@@ -1513,20 +1679,213 @@ async def handle_auto_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     _, action, step_id = parts
 
     thread_id = query.message.message_thread_id or DEFAULT_THREAD_ID
-    approved = action == "approve"
 
-    # Resolve the pending future in the executor
-    resolved = auto.resolve_pending_decision(thread_id, step_id, approved=approved)
-    if not resolved:
+    # ── Party-mode gate ──────────────────────────────────────────
+    if action.startswith("party-"):
+        await _handle_party_callback(update, context, action, step_id, thread_id)
+        return
+
+    # ── Existing approve/abort/skip gate ────────────────────────
+    # Try resolving an in-memory future first (driver still alive and awaiting).
+    if action in ("approve", "abort"):
+        resolved = auto.resolve_pending_decision(
+            thread_id, step_id, approved=(action == "approve"),
+        )
+        if resolved:
+            icon = "✅" if action == "approve" else "🛑"
+            label = "Approved" if action == "approve" else "Aborted"
+            await query.edit_message_text(
+                f"{icon} <b>{label}</b> — <code>{_escape_html(step_id)}</code>",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+    # No in-memory future — driver already exited (normal for paused state).
+    # Handle approve/abort/skip directly from persisted state.
+    row = await db.get_auto_run(thread_id, path=DB_PATH)
+    if row is None:
+        await query.edit_message_text("⚠️ No active run for this thread.")
+        return
+
+    state = auto.AutoState.from_db_row(row)
+    if not state.is_paused():
         await query.edit_message_text("⚠️ This decision is no longer pending.")
         return
 
-    icon = "✅" if approved else "❌"
-    label = "Approved" if approved else "Aborted"
+    if action == "abort":
+        await auto.stop_driver(thread_id)
+        state.status = "aborted"
+        state.pending_gate_step_id = None
+        await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
+        await query.edit_message_text(
+            f"🛑 <b>Aborted</b> — <code>{_escape_html(step_id)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    if action == "skip":
+        await auto.stop_driver(thread_id)
+        await query.edit_message_text(
+            f"⏭️ <b>Skipped</b> — <code>{_escape_html(step_id)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        await _skip_current_step(update, context, state)
+        return
+
+    # Approve — resume the run
     await query.edit_message_text(
-        f"{icon} <b>{label}</b> — <code>{_escape_html(step_id)}</code>",
+        f"✅ <b>Approved</b> — <code>{_escape_html(step_id)}</code>",
         parse_mode=ParseMode.HTML,
     )
+    await auto.stop_driver(thread_id)
+    await _resume_auto_run(update, context, state)
+
+
+async def _handle_party_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE,
+    action: str, step_id: str, thread_id: int,
+) -> None:
+    """Handle the three party-mode consensus gate buttons."""
+    query = update.callback_query
+
+    # Resolve any waiter (utility — no internal awaiter today, but harmless).
+    auto.resolve_pending_party_decision(
+        thread_id, step_id,
+        choice={"party-accept": "accept", "party-more": "more"}.get(action, "abort"),
+    )
+
+    row = await db.get_auto_run(thread_id, path=DB_PATH)
+    if row is None:
+        await query.edit_message_text(
+            "⚠️ No active autonomous run for this thread."
+        )
+        return
+    state = auto.AutoState.from_db_row(row)
+
+    if action == "party-abort":
+        await auto.stop_driver(thread_id)
+        state.status = "aborted"
+        state.last_party_context = None
+        await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
+        await query.edit_message_text(
+            f"🛑 <b>Override & abort</b> — party-mode rejected, run halted "
+            f"(<code>{_escape_html(step_id)}</code>).",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    if action == "party-accept":
+        # Edit the keyboard message to show acceptance, then resume the
+        # driver so the runner advances past the party-mode gate.
+        await query.edit_message_text(
+            f"✅ <b>Consensus accepted</b> — resuming "
+            f"(<code>{_escape_html(step_id)}</code>).",
+            parse_mode=ParseMode.HTML,
+        )
+        state.last_party_context = None
+        # Cancel any stale driver task before restarting
+        await auto.stop_driver(thread_id)
+        await _resume_auto_run(update, context, state)
+        return
+
+    if action == "party-more":
+        # Re-run party-mode with the stashed context. If the new round
+        # produces consensus, present the gate again (loop). If not, the
+        # callback advances past the gate automatically.
+        await query.edit_message_text(
+            f"🔄 <b>Running another round…</b> "
+            f"(<code>{_escape_html(step_id)}</code>)",
+            parse_mode=ParseMode.HTML,
+        )
+        if not state.last_party_context:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                message_thread_id=thread_id if thread_id != DEFAULT_THREAD_ID else None,
+                text=(
+                    "⚠️ No stashed context for this party-mode run — "
+                    "use <code>/auto resume</code> to continue."
+                ),
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        await auto.stop_driver(thread_id)
+        await _retrigger_party_mode(update, context, state, step_id)
+        return
+
+
+async def _retrigger_party_mode(
+    update: Update, context: ContextTypes.DEFAULT_TYPE,
+    state: "auto.AutoState", step_id: str,
+) -> None:
+    """Re-invoke party-mode for the same step using the stashed context.
+
+    If the new run produces consensus, re-present the gate keyboard. If
+    not, advance past the gate and resume the run normally.
+    """
+    thread_id = state.thread_id
+
+    async def _persist(row: dict) -> None:
+        await db.upsert_auto_run(row, path=DB_PATH)
+
+    executor = auto.AutoExecutor(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        runner_ref=runner,
+        config_ref=config,
+        db_ref=db,
+        db_path=DB_PATH,
+        project_dir_resolver=_project_dir_resolver_factory(),
+        progress_state=state,
+        progress_persist=_persist,
+    )
+
+    flows_dir = await _resolve_flows_dir(thread_id)
+    try:
+        flow_obj = auto.load_flow(state.flow_id, flows_dir=flows_dir)
+    except Exception:
+        flow_obj = None
+    timeout_seconds = (
+        flow_obj.default_step_timeout_seconds if flow_obj is not None else None
+    )
+
+    try:
+        result = await executor.run_party_mode(
+            thread_id=thread_id,
+            context=state.last_party_context or "",
+            min_rounds=2,
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception as exc:
+        logger.warning("[auto] re-run party-mode failed: %s", exc)
+        result = auto.PartyModeResult(rounds=0, consensus=False)
+
+    # Update the most recent party-mode round count if we have a step record.
+    for record in reversed(state.history):
+        if record.step_id == step_id:
+            record.party_mode_rounds = max(
+                record.party_mode_rounds, result.rounds,
+            )
+            break
+
+    if result.consensus:
+        # Another round of consensus — represent the gate.
+        try:
+            await executor.present_party_consensus_gate(
+                thread_id=thread_id,
+                step_id=step_id,
+                summary=result.consensus_summary,
+            )
+        except Exception as exc:
+            logger.warning("[auto] re-present party gate failed: %s", exc)
+        state.status = "paused-party"
+        await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
+        return
+
+    # No consensus this round — advance past the gate and resume the run.
+    state.last_party_context = None
+    state.status = "running"
+    await db.upsert_auto_run(state.to_db_row(), path=DB_PATH)
+    await _resume_auto_run(update, context, state)
 
 
 # ── Skill Slash Command Handler ───────────────────────────────────
@@ -2826,6 +3185,27 @@ def main() -> None:
             config.cleanup_interval, config.idle_session_max_age,
             config.decision_reply_timeout,
         )
+
+        # Detect orphaned auto_run rows — status=running but no driver task
+        # (happens after bot restart, network loss, or crash mid-step).
+        # Log a warning so the user knows to /auto resume.
+        try:
+            all_runs = await db.list_auto_runs(path=DB_PATH)
+            orphaned = [
+                r for r in all_runs
+                if r.get("status") == "running"
+                and not auto.is_driver_active(r["thread_id"])
+            ]
+            for row in orphaned:
+                tid = row["thread_id"]
+                fid = row.get("flow_id", "?")
+                logger.warning(
+                    "[auto] orphaned run detected: thread=%s flow=%s — "
+                    "user can /auto resume to continue",
+                    tid, fid,
+                )
+        except Exception as exc:
+            logger.debug("[auto] orphan detection skipped: %s", exc)
 
     async def _post_shutdown(app_):
         task = app_.bot_data.get("_cleanup_task")
